@@ -46,6 +46,7 @@ from src.income_agent.handler import create_income, list_income
 from src.expense_agent.handler import create_expense, list_expenses
 from src.savings_agent.handler import create_goal, list_goals
 from src.insights_agent.handler import query_insights
+from src.metrics_agent.handler import get_metrics
 
 JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
 
@@ -97,6 +98,7 @@ app.post("/v1/goals", status_code=201)(create_goal)
 app.get("/v1/goals")(list_goals)
 
 app.post("/v1/insights/query")(query_insights)
+app.get("/v1/metrics")(get_metrics)
 
 # Mount auth routes directly
 from src.auth_api.handler import register, login, me
