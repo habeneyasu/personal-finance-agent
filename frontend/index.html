@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PFIP - Personal Finance Intelligence Platform</title>
+    <meta name="description" content="AI-powered personal finance platform with intelligent insights and automated financial optimization" />
+    <meta name="theme-color" content="#0f172a" />
+    
+    <!-- Preconnect to fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    
+    <!-- Base styles -->
+    <style>
+      /* Prevent flash of unstyled content */
+      :root {
+        --color-primary: #22c55e;
+        --color-secondary: #0f172a;
+        --color-accent: #ef4444;
+      }
+      
+      body {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        background-color: #0f172a;
+        color: #f1f5f9;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+      }
+      
+      * {
+        box-sizing: border-box;
+      }
+      
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: #1e293b;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: #475569;
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+      }
+      
+      /* Loading animation */
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      .animate-spin {
+        animation: spin 1s linear infinite;
+      }
+      
+      /* Focus styles */
+      *:focus-visible {
+        outline: 2px solid #22c55e;
+        outline-offset: 2px;
+      }
+      
+      /* Selection styles */
+      ::selection {
+        background-color: #22c55e;
+        color: #0f172a;
+      }
+      
+      /* Smooth scrolling */
+      html {
+        scroll-behavior: smooth;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
