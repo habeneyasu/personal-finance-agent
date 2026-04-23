@@ -1,53 +1,19 @@
-# Personal Financial Intelligence Platform (PFIP)
+# Personal Financial Intelligence Platform (PFIP) MVP
 
-An AI-native personal finance platform built on AWS serverless architecture with Model Context Protocol (MCP) integration.
+An AI-native personal finance platform built on AWS serverless architecture with Model Context Protocol (MCP) integration. Four specialized agents handle income tracking, expense categorization, savings goals, and natural language insights.
 
-## 🚀 Quick Start
+## Architecture
 
-This repository contains the complete MVP implementation. See the pull requests for detailed implementation:
+- **Runtime**: Python 3.11 on AWS Lambda (FastAPI + Mangum)
+- **Database**: Aurora Serverless v2 (PostgreSQL 15.4)
+- **AI**: AWS Bedrock (Claude / Nova) for expense categorization and NL insights
+- **Auth**: AWS Cognito (production) / local JWT (development)
+- **MCP**: Model Context Protocol server for Claude Desktop integration
+- **IaC**: Terraform
+- **CI/CD**: GitHub Actions
+- **Frontend**: React + Vite + Recharts
 
-- [PR #1: Project Documentation and Configuration](https://github.com/habeneyasu/personal-finance-agent/pull/new/pr/documentation-setup)
-- [PR #2: Backend Infrastructure and Core Functionality](https://github.com/habeneyasu/personal-finance-agent/pull/new/pr/backend-infrastructure)  
-- [PR #3: React Frontend with Professional UI/UX](https://github.com/habeneyasu/personal-finance-agent/pull/new/pr/frontend-ui-ux)
-- [PR #4: Complete MVP Integration](https://github.com/habeneyasu/personal-finance-agent/pull/new/pr/complete-mvp)
-
-## 📋 Architecture
-
-- **Backend**: Python 3.11 with FastAPI + AWS Lambda
-- **Database**: Aurora Serverless v2 (PostgreSQL)
-- **AI/ML**: AWS Bedrock for expense categorization and insights
-- **Frontend**: React + TypeScript with professional UI/UX
-- **Infrastructure**: Terraform IaC for AWS deployment
-- **Integration**: MCP server for Claude Desktop compatibility
-
-## 🔧 Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/habeneyasu/personal-finance-agent.git
-cd personal-finance-agent
-
-# Start local development
-docker-compose up -d
-python3 scripts/migrate.py --env local
-python3 scripts/seed_demo.py --env local --reset
-uvicorn scripts.run_api_local:app --port 8000 --reload
-cd frontend && npm install && npm run dev
-```
-
-## 🎯 Demo
-
-- **URL**: http://localhost:5173
-- **Email**: demo@pfip.dev
-- **Password**: Demo1234!
-
-## 📚 Documentation
-
-- [Requirements Specification](MVP-Initialy.md)
-- [Deployment Guide](DEPLOY.md)
-- [API Documentation](docs/api.md)
-
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 src/
@@ -62,23 +28,62 @@ infra/             # Terraform modules (Aurora, Cognito, IAM, Lambda, API GW)
 tests/unit/        # pytest unit tests (126 tests, 90% coverage)
 scripts/           # DB migration, seed data, local runners
 frontend/          # React dashboard (Overview, Transactions, Goals, Insights)
+.github/workflows/ # CI/CD pipeline
 ```
 
-## 🧪 Testing
+## Quick Start (Local)
+
+**1. Start the database:**
+```bash
+docker-compose up -d
+```
+
+**2. Run migrations + seed demo data:**
+```bash
+export $(cat .env.local | grep -v '^#' | grep -v '^$' | xargs)
+python3 scripts/migrate.py --env local
+python3 scripts/seed_demo.py --env local --reset
+```
+
+**3. Start the backend API:**
+```bash
+uvicorn scripts.run_api_local:app --port 8000 --reload
+```
+
+**4. Start the frontend:**
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Open http://localhost:5173 — login with `demo@pfip.dev` / `Demo1234!`
+
+**5. Start the MCP Inspector (optional):**
+```bash
+npx @modelcontextprotocol/inspector python3 scripts/run_mcp_local.py
+```
+
+## Running Tests
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/unit/ --cov=src --cov-fail-under=80
+ENVIRONMENT=local pytest tests/unit/ --cov=src --cov-fail-under=80 -q
 ```
 
-## 🚀 Deployment
+## Demo
+
+See `scripts/demo_script.md` for the full Friday presentation flow.
+
+## AWS Deployment
 
 ```bash
 cd infra
 terraform init
-terraform apply
+terraform apply \
+  -var="aurora_master_password=YourSecurePassword" \
+  -var="subnet_ids=[\"subnet-xxx\",\"subnet-yyy\"]" \
+  -var="vpc_id=vpc-xxx"
 ```
 
-## 📄 License
-
-MIT License - see LICENSE file for details.
+Required GitHub secrets for CI/CD:
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+- `AURORA_MASTER_PASSWORD`, `TF_SUBNET_IDS`, `TF_VPC_ID`

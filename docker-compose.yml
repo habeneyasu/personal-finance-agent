@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:15.4
+    container_name: pfip-postgres
+    environment:
+      POSTGRES_DB: pfip
+      POSTGRES_USER: pfip_admin
+      POSTGRES_PASSWORD: pfip_local_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - pfip_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pfip_admin -d pfip"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pfip_postgres_data:
