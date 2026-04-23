@@ -1,0 +1,41 @@
+# ============================================================
+# PFIP Terraform Variables — Example
+# Copy to terraform.tfvars and fill in real values
+# NEVER commit terraform.tfvars to git (it's gitignored)
+# ============================================================
+
+# AWS region
+aws_region = "us-east-1"
+
+# Environment name (used as resource name prefix)
+environment = "staging"
+
+# Project name prefix
+project_name = "pfip"
+
+# ── Aurora Database ───────────────────────────────────────────
+# Strong password: python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+aurora_master_password = "REPLACE_WITH_STRONG_DB_PASSWORD"
+
+# ── VPC Configuration ─────────────────────────────────────────
+# Get your default VPC:
+#   aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" --query "Vpcs[0].VpcId"
+vpc_id = "vpc-XXXXXXXXXXXXXXXXX"
+
+# Get 2 subnets in different AZs:
+#   aws ec2 describe-subnets --filters "Name=defaultForAz,Values=true" \
+#     --query "Subnets[0:2].SubnetId"
+subnet_ids = [
+  "subnet-XXXXXXXXXXXXXXXXX",
+  "subnet-YYYYYYYYYYYYYYYYY"
+]
+
+# ── JWT Secret ────────────────────────────────────────────────
+# Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+jwt_secret = "REPLACE_WITH_STRONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+
+# ── Terraform State Backend ───────────────────────────────────
+# Create the S3 bucket first:
+#   aws s3 mb s3://pfip-terraform-state-YOUR_ACCOUNT_ID --region us-east-1
+# Then uncomment the backend block in main.tf and set:
+# terraform_state_bucket = "pfip-terraform-state-YOUR_ACCOUNT_ID"
