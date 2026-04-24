@@ -100,6 +100,19 @@ app.get("/v1/goals")(list_goals)
 app.post("/v1/insights/query")(query_insights)
 app.get("/v1/metrics")(get_metrics)
 
+# Add endpoints without /v1 prefix for frontend compatibility
+app.post("/income", status_code=201)(create_income)
+app.get("/income")(list_income)
+
+app.post("/expenses", status_code=201)(create_expense)
+app.get("/expenses")(list_expenses)
+
+app.post("/goals", status_code=201)(create_goal)
+app.get("/goals")(list_goals)
+
+app.post("/insights/query")(query_insights)
+app.get("/metrics")(get_metrics)
+
 # Mount auth routes directly
 from src.auth_api.handler import register, login, me
 app.post("/auth/register", status_code=201)(register)
