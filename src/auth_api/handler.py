@@ -21,7 +21,6 @@ from src.shared.db import get_connection, get_cursor
 
 app = FastAPI(title="PFIP Auth")
 
-# Secret key for local JWT signing — in production this is Cognito
 JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
@@ -128,7 +127,6 @@ async def login(request: Request):
     finally:
         conn.close()
 
-    # Generic error to prevent user enumeration
     if not row or not row[2]:
         return _error("Invalid email or password", 401)
 

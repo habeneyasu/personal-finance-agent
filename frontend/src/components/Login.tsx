@@ -15,14 +15,20 @@ export default function Login({ onLogin }: Props) {
     setError('')
     setLoading(true)
     try {
+      console.log('Attempting', mode, 'with email:', email)
       const data = mode === 'login' ? await login(email, password) : await register(email, password)
+      console.log('Response data:', data)
       const token = data.token || data.access_token
+      console.log('Token found:', token)
       if (token) {
+        console.log('Calling onLogin with token:', token, 'email:', data.email || email)
         onLogin(token, data.email || email)
       } else {
+        console.log('No token found in response')
         setError('Unexpected response from server.')
       }
     } catch (err: any) {
+      console.log('Login error:', err)
       setError(err?.response?.data?.detail || err?.response?.data?.error || 'Authentication failed.')
     } finally {
       setLoading(false)
