@@ -20,6 +20,10 @@ variable "filename" {
   default     = "placeholder.zip"
 }
 
+locals {
+  resolved_filename = var.filename == "placeholder.zip" ? "${path.module}/placeholder.zip" : var.filename
+}
+
 variable "timeout" {
   description = "Lambda timeout in seconds"
   type        = number

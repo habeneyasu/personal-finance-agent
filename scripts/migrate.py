@@ -100,6 +100,31 @@ DDL_STATEMENTS = [
         "Create index idx_goals_user",
         "CREATE INDEX IF NOT EXISTS idx_goals_user ON savings_goals(user_id);",
     ),
+    (
+        "Add initial_amount column to savings_goals if missing",
+        "ALTER TABLE savings_goals ADD COLUMN IF NOT EXISTS initial_amount NUMERIC(12,2) NOT NULL DEFAULT 0;",
+    ),
+    (
+        "Create llm_usage table",
+        """
+        CREATE TABLE IF NOT EXISTS llm_usage (
+            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
+            agent           TEXT NOT NULL,
+            model           TEXT NOT NULL,
+            prompt_tokens   INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens    INTEGER NOT NULL DEFAULT 0,
+            latency_ms      FLOAT NOT NULL DEFAULT 0,
+            estimated_cost_usd FLOAT NOT NULL DEFAULT 0,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        """,
+    ),
+    (
+        "Create index idx_llm_usage_user",
+        "CREATE INDEX IF NOT EXISTS idx_llm_usage_user ON llm_usage(user_id, created_at DESC);",
+    ),
 ]
 
 

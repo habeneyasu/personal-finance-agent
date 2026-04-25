@@ -54,3 +54,9 @@ variable "pfip_api_key" {
   sensitive   = true
   default     = "REPLACE_WITH_STRONG_API_KEY"
 }
+
+variable "cors_allow_origin" {
+  description = "Single browser origin for Access-Control-Allow-Origin on API Gateway MOCK CORS responses. Comma-separated lists are invalid per CORS. Leave empty to derive: production S3 website for environment=production, else http://localhost:5173."
+  type        = string
+  default     = ""
+}

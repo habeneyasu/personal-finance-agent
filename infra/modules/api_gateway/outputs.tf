@@ -19,6 +19,6 @@ output "authorizer_id" {
 }
 
 output "deployment_invoke_url" {
-  description = "Invoke URL for the deployed stage (e.g. https://{id}.execute-api.{region}.amazonaws.com/v1)"
-  value       = aws_api_gateway_deployment.this.invoke_url
+  description = "Invoke URL for deployed stage (e.g. https://{id}.execute-api.{region}.amazonaws.com/v1)"
+  value       = "https://${aws_api_gateway_rest_api.this.id}.execute-api.us-east-1.amazonaws.com/v1"
 }

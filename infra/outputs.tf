@@ -33,8 +33,8 @@ output "frontend_bucket" {
 }
 
 output "frontend_url" {
-  description = "CloudFront URL for the frontend dashboard"
-  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  description = "S3 static website URL for the frontend dashboard"
+  value       = "http://${aws_s3_bucket.frontend.bucket}.s3-website-${var.aws_region}.amazonaws.com"
 }
 
 # ── Lambda Functions ─────────────────────────────────────────

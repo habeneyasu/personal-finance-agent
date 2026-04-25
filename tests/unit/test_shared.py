@@ -269,3 +269,62 @@ class TestGoalTargetDateValidator:
     def test_accepts_date_object_in_future(self):
         future = date.today() + timedelta(days=10)
         assert validate_goal_target_date(future) == future
+
+
+# ---------------------------------------------------------------------------
+# LLM client tests
+# ---------------------------------------------------------------------------
+
+class TestLlmClient:
+    """Tests for src/shared/llm — Cerebras and Bedrock routing."""
+
+    def test_cerebras_called_when_api_key_set(self, monkeypatch):
+        """call_llm uses Cerebras when CEREBRAS_API_KEY is set."""
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Transportation"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 5
+
+        with patch("src.shared.llm._call_cerebras", return_value="Transportation") as mock_cerebras:
+            from src.shared.llm import call_llm
+            result = call_llm("test prompt", max_tokens=10)
+
+        assert result == "Transportation"
+        mock_cerebras.assert_called_once()
+
+    def test_bedrock_called_when_no_api_key(self, monkeypatch):
+        """call_llm uses Bedrock when CEREBRAS_API_KEY is not set."""
+        monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+
+        with patch("src.shared.llm._call_bedrock", return_value="Groceries") as mock_bedrock:
+            from src.shared.llm import call_llm
+            result = call_llm("test prompt", max_tokens=10)
+
+        assert result == "Groceries"
+        mock_bedrock.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# LLM client tests
+# ---------------------------------------------------------------------------
+
+class TestLlmClient:
+    def test_cerebras_called_when_api_key_set(self, monkeypatch):
+        monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
+        with patch("src.shared.llm._call_cerebras", return_value="Transportation") as mock_c:
+            from src.shared.llm import call_llm
+            result = call_llm("test prompt", max_tokens=10)
+        assert result == "Transportation"
+        mock_c.assert_called_once()
+
+    def test_bedrock_called_when_no_api_key(self, monkeypatch):
+        monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+        with patch("src.shared.llm._call_bedrock", return_value="Groceries") as mock_b:
+            from src.shared.llm import call_llm
+            result = call_llm("test prompt", max_tokens=10)
+        assert result == "Groceries"
+        mock_b.assert_called_once()
