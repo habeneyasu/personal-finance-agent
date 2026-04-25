@@ -16,21 +16,18 @@ def calculate_progress(
     goal_created_at,
     income_rows: list,
     expense_rows: list,
+    initial_amount: Decimal = Decimal("0"),
 ) -> Decimal:
     """Calculate current savings amount since goal creation.
 
-    Args:
-        goal_created_at: datetime when the goal was created (unused in formula,
-                         filtering is done by the caller via SQL WHERE clause)
-        income_rows: list of (amount,) tuples from income_entries
-        expense_rows: list of (amount,) tuples from expense_entries
+    Formula: initial_amount + SUM(income since creation) - SUM(expenses since creation)
 
-    Returns:
-        net Decimal (can be negative if expenses exceed income)
+    The initial_amount accounts for any existing balance the user had when
+    the goal was created (defaults to 0 for backward compatibility).
     """
     total_income = sum(Decimal(str(row[0])) for row in income_rows) if income_rows else Decimal("0")
     total_expenses = sum(Decimal(str(row[0])) for row in expense_rows) if expense_rows else Decimal("0")
-    return total_income - total_expenses
+    return initial_amount + total_income - total_expenses
 
 
 def predict_completion(

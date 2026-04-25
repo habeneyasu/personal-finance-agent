@@ -87,7 +87,7 @@ resource "aws_api_gateway_integration_response" "options_root" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.cors_allow_origin}'"
   }
 }
 

@@ -129,6 +129,50 @@ async def get_metrics(request: Request):
             1
         )
 
+        # ── 6. LLM Usage Metrics ──────────────────────────────────────────────
+        cursor.execute(
+            """
+            SELECT 
+                COUNT(*) as total_calls,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0) as total_cost_usd,
+                COALESCE(AVG(latency_ms), 0) as avg_latency_ms,
+                COALESCE(MAX(latency_ms), 0) as max_latency_ms
+            FROM llm_usage
+            WHERE user_id = %s
+            """,
+            (user_id,),
+        )
+        llm_row = cursor.fetchone()
+        llm_stats = {
+            "total_calls": int(llm_row[0]) if llm_row else 0,
+            "total_tokens": int(llm_row[1]) if llm_row else 0,
+            "total_cost_usd": round(float(llm_row[2]), 6) if llm_row else 0.0,
+            "avg_latency_ms": round(float(llm_row[3]), 1) if llm_row else 0.0,
+            "max_latency_ms": round(float(llm_row[4]), 1) if llm_row else 0.0,
+        }
+
+        # Per-agent breakdown
+        cursor.execute(
+            """
+            SELECT agent, COUNT(*) as calls, SUM(total_tokens) as tokens,
+                   SUM(estimated_cost_usd) as cost, AVG(latency_ms) as avg_ms
+            FROM llm_usage WHERE user_id = %s
+            GROUP BY agent ORDER BY calls DESC
+            """,
+            (user_id,),
+        )
+        agent_usage = [
+            {
+                "agent": r[0],
+                "calls": int(r[1]),
+                "tokens": int(r[2] or 0),
+                "cost_usd": round(float(r[3] or 0), 6),
+                "avg_latency_ms": round(float(r[4] or 0), 1),
+            }
+            for r in cursor.fetchall()
+        ]
+
         metrics = {
             "computed_at": datetime.now(timezone.utc).isoformat(),
             "user_id": str(user_id),
@@ -185,6 +229,8 @@ async def get_metrics(request: Request):
                 },
             ],
             "baselines": BASELINES,
+            "llm_usage": llm_stats,
+            "llm_usage_by_agent": agent_usage,
             "summary": {
                 "total_income_entries": total_income,
                 "total_expense_entries": total_expenses,

@@ -7,6 +7,7 @@ An AI-native personal finance platform built on AWS serverless architecture with
 - **Runtime**: Python 3.11 on AWS Lambda (FastAPI + Mangum)
 - **Database**: Aurora Serverless v2 (PostgreSQL 15.4)
 - **AI**: AWS Bedrock (Claude / Nova) for expense categorization and NL insights
+- **LLM-as-Judge**: Validates LLM answers before returning to user — CoT retry + SQL fallback
 - **Auth**: AWS Cognito (production) / local JWT (development)
 - **MCP**: Model Context Protocol server for Claude Desktop integration
 - **IaC**: Terraform

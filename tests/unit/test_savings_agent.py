@@ -32,6 +32,7 @@ def _make_goal_row(
     name="Vacation",
     target_amount="5000.00",
     current_amount="0.00",
+    initial_amount="0.00",
     target_date=None,
     created_at=None,
 ):
@@ -41,6 +42,7 @@ def _make_goal_row(
         name,
         Decimal(target_amount),
         Decimal(current_amount),
+        Decimal(initial_amount),
         target_date or (date.today() + timedelta(days=365)),
         created_at or _NOW,
     )
