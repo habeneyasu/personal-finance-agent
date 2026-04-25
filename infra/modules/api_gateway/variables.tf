@@ -20,3 +20,8 @@ variable "environment" {
   type        = string
   default     = "staging"
 }
+
+variable "cors_allow_origin" {
+  description = "Single Origin value for root OPTIONS MOCK CORS (must not be comma-separated)"
+  type        = string
+}

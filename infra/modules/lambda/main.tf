@@ -23,7 +23,7 @@ resource "aws_lambda_function" "this" {
   runtime       = "python3.11"
   handler       = var.handler
   role          = var.role_arn
-  filename      = var.filename
+  filename      = local.resolved_filename
   timeout       = var.timeout
   memory_size   = var.memory_size
 

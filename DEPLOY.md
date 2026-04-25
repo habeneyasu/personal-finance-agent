@@ -68,6 +68,9 @@ terraform output  # copy all values
 
 ## Step 6 — Package and deploy Lambdas
 
+The Insights Agent includes an LLM-as-Judge pipeline (`src/insights_agent/judge.py`).
+Make sure it's included in the Lambda package — `package_lambdas.sh` handles this automatically.
+
 ```bash
 cd ..
 bash scripts/package_lambdas.sh

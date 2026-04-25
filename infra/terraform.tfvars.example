@@ -34,6 +34,10 @@ subnet_ids = [
 # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
 jwt_secret = "REPLACE_WITH_STRONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
 
+# ── CORS (optional) ──────────────────────────────────────────
+# Leave unset to auto-pick: production → production S3 website origin; else → http://localhost:5173
+# cors_allow_origin = "https://your-staging-frontend.example.com"
+
 # ── Terraform State Backend ───────────────────────────────────
 # Create the S3 bucket first:
 #   aws s3 mb s3://pfip-terraform-state-YOUR_ACCOUNT_ID --region us-east-1

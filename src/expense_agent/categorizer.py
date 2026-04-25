@@ -55,7 +55,7 @@ def _local_categorize(merchant: str) -> str:
     return "Other"
 
 
-def categorize_expense(merchant: str, amount: Decimal) -> str:
+def categorize_expense(merchant: str, amount: Decimal, user_id: str = None) -> str:
     """Categorize an expense using Cerebras/Bedrock or local rules.
 
     Returns a category from ALLOWED_CATEGORIES. Defaults to "Other" on any error.
@@ -69,7 +69,7 @@ def categorize_expense(merchant: str, amount: Decimal) -> str:
 
     try:
         start = time.monotonic()
-        category = call_llm(prompt, max_tokens=10).strip()
+        category = call_llm(prompt, max_tokens=10, user_id=user_id, agent="expense_categorizer").strip()
         latency_ms = (time.monotonic() - start) * 1000
 
         if _HAS_METRICS:

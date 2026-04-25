@@ -6,13 +6,12 @@ terraform {
     }
   }
 
-  # Remote state — create S3 bucket first, then uncomment:
-  # aws s3 mb s3://pfip-terraform-state-YOUR_ACCOUNT_ID --region us-east-1
-  # backend "s3" {
-  #   bucket = "pfip-terraform-state-YOUR_ACCOUNT_ID"
-  #   key    = "pfip/staging/terraform.tfstate"
-  #   region = "us-east-1"
-  # }
+  # Remote state — S3 bucket created and configured
+  backend "s3" {
+    bucket = "pfip-terraform-state-523476390411"
+    key    = "pfip/production/terraform.tfstate"
+    region = "us-east-1"
+  }
 }
 
 provider "aws" {
@@ -80,6 +79,7 @@ module "api_gateway" {
   stage_name            = "v1"
   cognito_user_pool_arn = module.cognito.user_pool_arn
   environment           = var.environment
+  cors_allow_origin      = local.cors_allow_origin
 }
 
 # ─────────────────────────────────────────────
@@ -93,6 +93,12 @@ locals {
     AWS_REGION_NAME  = var.aws_region
   }
   api_source_arn = "${module.api_gateway.rest_api_execution_arn}/*/*"
+  # Browsers allow only one Access-Control-Allow-Origin value; comma-separated origins break preflight.
+  cors_allow_origin = var.cors_allow_origin != "" ? var.cors_allow_origin : (
+    var.environment == "production"
+    ? "http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com"
+    : "http://localhost:5173"
+  )
 }
 
 # ─────────────────────────────────────────────
@@ -157,7 +163,7 @@ module "lambda_insights" {
 module "lambda_mcp_server" {
   source        = "./modules/lambda"
   function_name = "${var.project_name}-${var.environment}-mcp-server"
-  handler       = "handler.lambda_handler"
+  handler       = "simple_handler.lambda_handler"
   role_arn      = module.iam.mcp_server_role_arn
   timeout       = 30
   memory_size   = 512
@@ -199,6 +205,68 @@ resource "aws_api_gateway_resource" "v1" {
   path_part   = "v1"
 }
 
+# ── /v1/health (public health check) ──────────────────────
+resource "aws_api_gateway_method" "v1_health_get" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.v1.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "v1_health_get" {
+  rest_api_id             = module.api_gateway.rest_api_id
+  resource_id             = aws_api_gateway_resource.v1.id
+  http_method             = aws_api_gateway_method.v1_health_get.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_auth.invoke_arn
+}
+
+# CORS for health check
+resource "aws_api_gateway_method" "v1_health_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.v1.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "v1_health_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.v1.id
+  http_method = aws_api_gateway_method.v1_health_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "v1_health_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.v1.id
+  http_method = aws_api_gateway_method.v1_health_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "v1_health_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.v1.id
+  http_method = aws_api_gateway_method.v1_health_options.http_method
+  status_code = aws_api_gateway_method_response.v1_health_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
+}
+
 # ── /v1/income ──────────────────────────────
 resource "aws_api_gateway_resource" "income" {
   rest_api_id = module.api_gateway.rest_api_id
@@ -221,6 +289,51 @@ resource "aws_api_gateway_integration" "income_post" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = module.lambda_income.invoke_arn
+}
+
+# CORS for income endpoint
+resource "aws_api_gateway_method" "income_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.income.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "income_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.income.id
+  http_method = aws_api_gateway_method.income_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "income_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.income.id
+  http_method = aws_api_gateway_method.income_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "income_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.income.id
+  http_method = aws_api_gateway_method.income_options.http_method
+  status_code = aws_api_gateway_method_response.income_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
 }
 
 resource "aws_api_gateway_method" "income_get" {
@@ -281,6 +394,51 @@ resource "aws_api_gateway_integration" "expenses_get" {
   uri                     = module.lambda_expense.invoke_arn
 }
 
+# CORS for expenses endpoint
+resource "aws_api_gateway_method" "expenses_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.expenses.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "expenses_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.expenses.id
+  http_method = aws_api_gateway_method.expenses_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "expenses_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.expenses.id
+  http_method = aws_api_gateway_method.expenses_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "expenses_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.expenses.id
+  http_method = aws_api_gateway_method.expenses_options.http_method
+  status_code = aws_api_gateway_method_response.expenses_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
+}
+
 # ── /v1/goals ───────────────────────────────
 resource "aws_api_gateway_resource" "goals" {
   rest_api_id = module.api_gateway.rest_api_id
@@ -303,6 +461,51 @@ resource "aws_api_gateway_integration" "goals_post" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = module.lambda_savings.invoke_arn
+}
+
+# CORS for goals endpoint
+resource "aws_api_gateway_method" "goals_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.goals.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "goals_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.goals.id
+  http_method = aws_api_gateway_method.goals_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "goals_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.goals.id
+  http_method = aws_api_gateway_method.goals_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "goals_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.goals.id
+  http_method = aws_api_gateway_method.goals_options.http_method
+  status_code = aws_api_gateway_method_response.goals_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
 }
 
 resource "aws_api_gateway_method" "goals_get" {
@@ -352,6 +555,51 @@ resource "aws_api_gateway_integration" "insights_query_post" {
   uri                     = module.lambda_insights.invoke_arn
 }
 
+# CORS for insights endpoint
+resource "aws_api_gateway_method" "insights_query_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.insights_query.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "insights_query_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.insights_query.id
+  http_method = aws_api_gateway_method.insights_query_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "insights_query_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.insights_query.id
+  http_method = aws_api_gateway_method.insights_query_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "insights_query_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.insights_query.id
+  http_method = aws_api_gateway_method.insights_query_options.http_method
+  status_code = aws_api_gateway_method_response.insights_query_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
+}
+
 # ── /auth (no Cognito auth — public endpoints) ──
 resource "aws_api_gateway_resource" "auth" {
   rest_api_id = module.api_gateway.rest_api_id
@@ -381,6 +629,51 @@ resource "aws_api_gateway_integration" "auth_register_post" {
   uri                     = module.lambda_auth.invoke_arn
 }
 
+# CORS for auth register
+resource "aws_api_gateway_method" "auth_register_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.auth_register.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "auth_register_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_register.id
+  http_method = aws_api_gateway_method.auth_register_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "auth_register_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_register.id
+  http_method = aws_api_gateway_method.auth_register_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "auth_register_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_register.id
+  http_method = aws_api_gateway_method.auth_register_options.http_method
+  status_code = aws_api_gateway_method_response.auth_register_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
+}
+
 resource "aws_api_gateway_resource" "auth_login" {
   rest_api_id = module.api_gateway.rest_api_id
   parent_id   = aws_api_gateway_resource.auth.id
@@ -403,12 +696,56 @@ resource "aws_api_gateway_integration" "auth_login_post" {
   uri                     = module.lambda_auth.invoke_arn
 }
 
+# CORS for auth login
+resource "aws_api_gateway_method" "auth_login_options" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.auth_login.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "auth_login_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_login.id
+  http_method = aws_api_gateway_method.auth_login_options.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "auth_login_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_login.id
+  http_method = aws_api_gateway_method.auth_login_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "auth_login_options" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_login.id
+  http_method = aws_api_gateway_method.auth_login_options.http_method
+  status_code = aws_api_gateway_method_response.auth_login_options.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
+  }
+}
+
 # ─────────────────────────────────────────────
 # API Gateway Deployment (depends on all routes)
 # ─────────────────────────────────────────────
 resource "aws_api_gateway_deployment" "main" {
   rest_api_id = module.api_gateway.rest_api_id
-  stage_name  = "v1"
 
   depends_on = [
     aws_api_gateway_integration.income_post,
@@ -420,6 +757,14 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.insights_query_post,
     aws_api_gateway_integration.auth_register_post,
     aws_api_gateway_integration.auth_login_post,
+    aws_api_gateway_integration_response.auth_register_options,
+    aws_api_gateway_integration_response.auth_login_options,
+    aws_api_gateway_integration.v1_health_get,
+    aws_api_gateway_integration_response.v1_health_options,
+    aws_api_gateway_integration_response.income_options,
+    aws_api_gateway_integration_response.expenses_options,
+    aws_api_gateway_integration_response.goals_options,
+    aws_api_gateway_integration_response.insights_query_options,
   ]
 
   triggers = {
@@ -430,6 +775,7 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.goals.id,
       aws_api_gateway_resource.insights_query.id,
       aws_api_gateway_resource.auth_login.id,
+      local.cors_allow_origin,
     ]))
   }
 
@@ -438,8 +784,19 @@ resource "aws_api_gateway_deployment" "main" {
   }
 }
 
+resource "aws_api_gateway_stage" "v1" {
+  deployment_id = aws_api_gateway_deployment.main.id
+  rest_api_id     = module.api_gateway.rest_api_id
+  stage_name      = "v1"
+}
+
 # ─────────────────────────────────────────────
 # S3 + CloudFront — Frontend Hosting
+# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# S3 — Frontend Hosting (public static website)
+# Note: CloudFront skipped — account not verified for CloudFront.
+# Using S3 static website hosting directly for the demo.
 # ─────────────────────────────────────────────
 resource "aws_s3_bucket" "frontend" {
   bucket        = "${var.project_name}-${var.environment}-frontend"
@@ -447,83 +804,31 @@ resource "aws_s3_bucket" "frontend" {
   tags          = { Environment = var.environment }
 }
 
+resource "aws_s3_bucket_website_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  index_document { suffix = "index.html" }
+  error_document { key = "index.html" }
+}
+
 resource "aws_s3_bucket_public_access_block" "frontend" {
   bucket                  = aws_s3_bucket.frontend.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
 }
 
-resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${var.project_name}-${var.environment}-oac"
-  origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_distribution" "frontend" {
-  enabled             = true
-  default_root_object = "index.html"
-  comment             = "PFIP ${var.environment} frontend"
-
-  origin {
-    domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
-    origin_id                = "S3-${aws_s3_bucket.frontend.id}"
-    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
-  }
-
-  default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-${aws_s3_bucket.frontend.id}"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
-
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
-
-    min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
-  }
-
-  # SPA routing — return index.html for all 404s
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
-  restrictions {
-    geo_restriction { restriction_type = "none" }
-  }
-
-  viewer_certificate {
-    cloudfront_default_certificate = true
-  }
-
-  tags = { Environment = var.environment }
-}
-
-# Allow CloudFront to read from S3
 resource "aws_s3_bucket_policy" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
+  bucket     = aws_s3_bucket.frontend.id
+  depends_on = [aws_s3_bucket_public_access_block.frontend]
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid       = "AllowCloudFrontRead"
+      Sid       = "PublicReadGetObject"
       Effect    = "Allow"
-      Principal = { Service = "cloudfront.amazonaws.com" }
+      Principal = "*"
       Action    = "s3:GetObject"
       Resource  = "${aws_s3_bucket.frontend.arn}/*"
-      Condition = {
-        StringEquals = {
-          "AWS:SourceArn" = aws_cloudfront_distribution.frontend.arn
-        }
-      }
     }]
   })
 }

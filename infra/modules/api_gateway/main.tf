@@ -45,24 +45,53 @@ resource "aws_api_gateway_authorizer" "cognito" {
 }
 
 # ─────────────────────────────────────────────
-# Deployment + Stage
-#
-# depends_on is intentionally empty here — actual route/integration
-# resources are added in infra/main.tf when wiring Lambda modules.
-# The deployment will be re-created when routes are added.
-#
-# stage_name defaults to "v1" to match the /v1/ API path prefix.
+# CORS Configuration
 # ─────────────────────────────────────────────
-resource "aws_api_gateway_deployment" "this" {
+resource "aws_api_gateway_method" "options_root" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_rest_api.this.root_resource_id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_root" {
   rest_api_id = aws_api_gateway_rest_api.this.id
-  stage_name  = var.stage_name
-
-  # Force a new deployment when the REST API changes
-  triggers = {
-    redeployment = sha1(jsonencode(aws_api_gateway_rest_api.this.body))
-  }
-
-  lifecycle {
-    create_before_destroy = true
+  resource_id = aws_api_gateway_rest_api.this.root_resource_id
+  http_method = aws_api_gateway_method.options_root.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
   }
 }
+
+resource "aws_api_gateway_method_response" "options_root" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_rest_api.this.root_resource_id
+  http_method = aws_api_gateway_method.options_root.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_root" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_rest_api.this.root_resource_id
+  http_method = aws_api_gateway_method.options_root.http_method
+  status_code = aws_api_gateway_method_response.options_root.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.cors_allow_origin}'"
+  }
+}
+
+# ─────────────────────────────────────────────
+# Note: Deployment is managed in root main.tf
+# after all routes/integrations are created.
+# ─────────────────────────────────────────────

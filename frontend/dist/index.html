@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PFIP — Personal Finance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #1e293b; }
+      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+      /* Focus styles for accessibility */
+      button:focus-visible, input:focus-visible, a:focus-visible {
+        outline: 2px solid #10b981;
+        outline-offset: 2px;
+      }
+      /* Responsive grid helpers */
+      @media (max-width: 768px) {
+        .grid-2col { grid-template-columns: 1fr !important; }
+        .grid-3col { grid-template-columns: 1fr !important; }
+        .hide-mobile { display: none !important; }
+        .nav-scroll { overflow-x: auto; }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-DYl7DyXh.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

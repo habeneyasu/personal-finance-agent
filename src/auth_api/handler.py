@@ -15,13 +15,14 @@ import bcrypt
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from jose import jwt
+from mangum import Mangum
 from pydantic import BaseModel, field_validator
 
 from src.shared.db import get_connection, get_cursor
+from src.shared.exceptions import handle_unhandled_exception
 
 app = FastAPI(title="PFIP Auth")
 
-# Secret key for local JWT signing — in production this is Cognito
 JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
@@ -71,7 +72,13 @@ def _error(detail: str, status: int) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": detail, "status": status})
 
 
+@app.get("/v1")
+async def health_v1():
+    return JSONResponse({"status": "ok", "service": "pfip-auth-api"})
+
+
 @app.post("/auth/register", status_code=201)
+@app.post("/v1/auth/register", status_code=201)
 async def register(request: Request):
     try:
         body = await request.json()
@@ -110,6 +117,7 @@ async def register(request: Request):
 
 
 @app.post("/auth/login")
+@app.post("/v1/auth/login")
 async def login(request: Request):
     try:
         body = await request.json()
@@ -128,7 +136,6 @@ async def login(request: Request):
     finally:
         conn.close()
 
-    # Generic error to prevent user enumeration
     if not row or not row[2]:
         return _error("Invalid email or password", 401)
 
@@ -145,6 +152,7 @@ async def login(request: Request):
 
 
 @app.get("/auth/me")
+@app.get("/v1/auth/me")
 async def me(request: Request):
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -159,3 +167,11 @@ async def me(request: Request):
         })
     except Exception:
         return _error("Invalid or expired token", 401)
+
+
+_mangum = Mangum(app)
+
+
+@handle_unhandled_exception
+def lambda_handler(event: dict, context) -> dict:
+    return _mangum(event, context)
