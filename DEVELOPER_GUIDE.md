@@ -394,3 +394,81 @@ aws s3 sync dist/ s3://pfip-production-frontend/ --delete
 | `LLM fallback answer` | Check `CEREBRAS_API_KEY` in `.env.local` |
 | `NaN in totals` | Amount is string from API — use `Number(e.amount)` |
 | `double /v1/v1/` | `VITE_API_URL` should not end with `/v1` |
+
+
+---
+
+## 14. LLM-as-Judge Evaluation Framework
+
+### Architecture
+
+```
+User question
+     ↓
+1. LLM Draft Answer (Cerebras/Bedrock) — ALWAYS called first
+     ↓
+2. Judge validates (deterministic, zero cost)
+   ├── Is draft empty? → SQL fallback
+   ├── Are numbers grounded in context? → Accept
+   └── Numbers unverified → CoT retry
+         ├── Retry verified → Accept retry
+         └── Retry unverified → SQL fallback → best-effort
+```
+
+### Key principle
+The LLM is always called first. SQL fallback is the safety net, not the primary path. This ensures the judge is genuinely evaluating LLM output.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `src/insights_agent/judge.py` | Core judge logic — validation, CoT retry, SQL fallback |
+| `src/insights_agent/handler.py` | Orchestrates: LLM draft → judge → response |
+
+### Judge decisions
+
+| Decision | Reason | What happened |
+|----------|--------|---------------|
+| `accept` | `numbers_verified` | Draft numbers all found in context |
+| `retry` | `cot_retry_verified` | Draft failed, CoT retry passed |
+| `fallback` | `sql_after_llm_unverified` | Both LLM attempts failed, SQL used |
+| `fallback` | `empty_draft` | LLM returned empty string |
+| `accept` | `best_effort_unverified` | No SQL answer available, returning draft |
+
+### Number grounding
+
+The validator extracts all numbers from the LLM answer and checks each against:
+- Monthly aggregates: `expenses_last_month`, `expenses_this_month`, etc.
+- Individual entry amounts
+- Category totals
+- Goal amounts and progress percentages
+
+Tolerance: ±1.5% to handle rounding. Numbers ≤ 1.0 are skipped (treated as counts).
+
+### SQL fallback coverage
+
+Deterministic answers are available for:
+- "How much did I spend last/this month?"
+- "What is my biggest/smallest expense category?"
+- "What is my total income/expenses?"
+- "What is my net savings/balance?"
+- "Am I on track for my goals?"
+
+### Logging
+
+Every judge decision is logged with:
+```python
+_logger.info("Judge decision", user_id=..., decision="accept|retry|fallback",
+             reason="...", retried=True|False)
+```
+
+### Testing the judge locally
+
+```bash
+# Ask a question that will trigger CoT retry (invented number)
+# The judge will catch it and either retry or use SQL fallback
+
+# Check uvicorn logs for judge decisions:
+# INFO: Judge decision decision=accept reason=numbers_verified retried=False
+# INFO: Judge decision decision=fallback reason=sql_after_llm_unverified retried=True
+```

@@ -1,113 +1,214 @@
-"""Financial context builder for Insights Agent."""
+"""
+Financial context builder for Insights Agent.
+
+Implements the Coordinator–Worker pattern with typed Pydantic contracts:
+  Insights_Agent (Coordinator)
+      ├── fetch_income_context()    → IncomeAgentContract
+      ├── fetch_expense_context()   → ExpenseAgentContract
+      └── fetch_savings_context()   → SavingsAgentContract
+
+Each worker returns a validated Pydantic model. The coordinator merges them
+into a single context dict for the LLM and Validation Engine, and updates
+the OrchestrationState with data freshness and source tracking.
+
+In production, these would be HTTP calls to the respective Lambda endpoints.
+In the current deployment, they share the same DB connection for efficiency,
+but the contract boundaries are strictly enforced via Pydantic validation.
+"""
 from datetime import date, timedelta
-from decimal import Decimal
+
+from src.insights_agent.models import (
+    ExpenseAgentContract,
+    ExpenseEntry,
+    IncomeAgentContract,
+    IncomeEntry,
+    OrchestrationState,
+    SavingsAgentContract,
+    SavingsGoalEntry,
+)
 
 
-def build_financial_context(user_id: str, conn) -> dict:
-    """Build financial context for the last 90 days.
+# ---------------------------------------------------------------------------
+# Worker agents — return typed Pydantic contracts
+# ---------------------------------------------------------------------------
 
-    Args:
-        user_id: User ID
-        conn: psycopg2 connection
-
-    Returns:
-        dict with:
-            - total_income: sum of all income amounts (float)
-            - total_expenses: sum of all expense amounts (float)
-            - net_savings: total_income - total_expenses (float)
-            - income_entries: list of {amount, source, date} dicts
-            - expense_entries: list of {amount, merchant, category, date} dicts
-            - expenses_by_category: dict of {category: total_amount}
-            - savings_goals: list of {name, target_amount, current_amount, target_date, progress_pct} dicts
-            - period: "last 90 days"
-    """
+def fetch_income_context(user_id: str, conn) -> IncomeAgentContract:
+    """Income_Agent worker — returns validated IncomeAgentContract."""
     ninety_days_ago = date.today() - timedelta(days=90)
-
     cursor = conn.cursor()
     try:
-        # Fetch income entries for last 90 days
         cursor.execute(
-            """
-            SELECT amount, source, date
-            FROM income_entries
-            WHERE user_id = %s AND date >= %s
-            ORDER BY date DESC
-            """,
+            "SELECT amount, source, date FROM income_entries "
+            "WHERE user_id = %s AND date >= %s ORDER BY date DESC",
             (user_id, ninety_days_ago),
         )
-        income_rows = cursor.fetchall()
-
-        # Fetch expense entries for last 90 days
-        cursor.execute(
-            """
-            SELECT amount, merchant, category, date
-            FROM expense_entries
-            WHERE user_id = %s AND date >= %s
-            ORDER BY date DESC
-            """,
-            (user_id, ninety_days_ago),
-        )
-        expense_rows = cursor.fetchall()
-
-        # Fetch all active savings goals
-        cursor.execute(
-            """
-            SELECT name, target_amount, current_amount, target_date
-            FROM savings_goals
-            WHERE user_id = %s
-            """,
-            (user_id,),
-        )
-        goal_rows = cursor.fetchall()
+        rows = cursor.fetchall()
     finally:
         cursor.close()
 
-    # Build income entries list
-    income_entries = [
-        {"amount": float(row[0]), "source": row[1], "date": str(row[2])}
-        for row in income_rows
-    ]
+    entries = [IncomeEntry(amount=float(r[0]), source=r[1], date=str(r[2])) for r in rows]
 
-    # Build expense entries list
-    expense_entries = [
-        {"amount": float(row[0]), "merchant": row[1], "category": row[2], "date": str(row[3])}
-        for row in expense_rows
-    ]
+    today = date.today()
+    this_month = f"{today.year}-{str(today.month).zfill(2)}"
+    last_month = (
+        f"{today.year - 1}-12" if today.month == 1
+        else f"{today.year}-{str(today.month - 1).zfill(2)}"
+    )
 
-    # Aggregate expenses by category
-    expenses_by_category: dict[str, float] = {}
-    for entry in expense_entries:
-        cat = entry["category"]
-        expenses_by_category[cat] = expenses_by_category.get(cat, 0.0) + entry["amount"]
+    def _month(d: str) -> str:
+        return d[:7]
 
-    # Build savings goals list with progress_pct
-    savings_goals = []
-    for row in goal_rows:
-        name, target_amount, current_amount, target_date = row
-        target = float(target_amount) if target_amount else 0.0
-        current = float(current_amount) if current_amount else 0.0
-        progress_pct = min(100.0, (current / target * 100)) if target > 0 else 0.0
-        savings_goals.append(
-            {
-                "name": name,
-                "target_amount": target,
-                "current_amount": current,
-                "target_date": str(target_date),
-                "progress_pct": round(progress_pct, 2),
-            }
+    return IncomeAgentContract(
+        total_income_90_days=sum(e.amount for e in entries),
+        income_this_month=sum(e.amount for e in entries if _month(e.date) == this_month),
+        income_last_month=sum(e.amount for e in entries if _month(e.date) == last_month),
+        entries=entries,
+    )
+
+
+def fetch_expense_context(user_id: str, conn) -> ExpenseAgentContract:
+    """Expense_Agent worker — returns validated ExpenseAgentContract."""
+    ninety_days_ago = date.today() - timedelta(days=90)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT amount, merchant, category, date FROM expense_entries "
+            "WHERE user_id = %s AND date >= %s ORDER BY date DESC",
+            (user_id, ninety_days_ago),
         )
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
 
-    total_income = sum(e["amount"] for e in income_entries)
-    total_expenses = sum(e["amount"] for e in expense_entries)
-    net_savings = total_income - total_expenses
+    entries = [
+        ExpenseEntry(amount=float(r[0]), merchant=r[1], category=r[2], date=str(r[3]))
+        for r in rows
+    ]
 
+    today = date.today()
+    this_month = f"{today.year}-{str(today.month).zfill(2)}"
+    last_month = (
+        f"{today.year - 1}-12" if today.month == 1
+        else f"{today.year}-{str(today.month - 1).zfill(2)}"
+    )
+
+    def _month(d: str) -> str:
+        return d[:7]
+
+    by_category: dict[str, float] = {}
+    for e in entries:
+        by_category[e.category] = by_category.get(e.category, 0.0) + e.amount
+
+    return ExpenseAgentContract(
+        total_expenses_90_days=sum(e.amount for e in entries),
+        expenses_this_month=sum(e.amount for e in entries if _month(e.date) == this_month),
+        expenses_last_month=sum(e.amount for e in entries if _month(e.date) == last_month),
+        by_category=by_category,
+        entries=entries,
+    )
+
+
+def fetch_savings_context(user_id: str, conn) -> SavingsAgentContract:
+    """Savings_Goal_Agent worker — returns validated SavingsAgentContract."""
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT name, target_amount, current_amount, target_date FROM savings_goals "
+            "WHERE user_id = %s",
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+
+    goals = []
+    for row in rows:
+        name, target, current, target_date = row
+        target_f = float(target) if target else 0.0
+        current_f = float(current) if current else 0.0
+        progress_pct = min(100.0, current_f / target_f * 100) if target_f > 0 else 0.0
+        goals.append(SavingsGoalEntry(
+            name=name,
+            target_amount=target_f,
+            current_amount=current_f,
+            target_date=str(target_date),
+            progress_pct=round(progress_pct, 2),
+        ))
+
+    return SavingsAgentContract(goals=goals)
+
+
+# ---------------------------------------------------------------------------
+# Coordinator — merges typed contracts into unified LLM context
+# ---------------------------------------------------------------------------
+
+def build_financial_context(
+    user_id: str,
+    conn,
+    state: OrchestrationState | None = None,
+) -> dict:
+    """
+    Coordinator: invokes each worker agent, validates their typed contracts,
+    and merges outputs into a unified context dict for the LLM.
+
+    Updates OrchestrationState with data_sources and freshness if provided.
+    """
+    today = date.today()
+    this_month = f"{today.year}-{str(today.month).zfill(2)}"
+    last_month = (
+        f"{today.year - 1}-12" if today.month == 1
+        else f"{today.year}-{str(today.month - 1).zfill(2)}"
+    )
+
+    # ── Invoke each worker — Pydantic validates the contract on return ────────
+    income: IncomeAgentContract = fetch_income_context(user_id, conn)
+    expense: ExpenseAgentContract = fetch_expense_context(user_id, conn)
+    savings: SavingsAgentContract = fetch_savings_context(user_id, conn)
+
+    # ── Track data sources and freshness ─────────────────────────────────────
+    data_sources: list[str] = []
+    if income.entries:
+        data_sources.append("income_agent")
+    if expense.entries:
+        data_sources.append("expense_agent")
+    if savings.goals:
+        data_sources.append("savings_agent")
+
+    if state is not None:
+        state.data_sources = data_sources
+        state.income_fetched = bool(income.entries)
+        state.expense_fetched = bool(expense.entries)
+        state.savings_fetched = bool(savings.goals)
+
+    net_savings = income.total_income_90_days - expense.total_expenses_90_days
+
+    # ── Merge into unified context dict (LLM-friendly flat structure) ─────────
     return {
-        "total_income": total_income,
-        "total_expenses": total_expenses,
-        "net_savings": net_savings,
-        "income_entries": income_entries,
-        "expense_entries": expense_entries,
-        "expenses_by_category": expenses_by_category,
-        "savings_goals": savings_goals,
+        "today": str(today),
+        "this_month": this_month,
+        "last_month": last_month,
         "period": "last 90 days",
+        # Income
+        "total_income_90_days": income.total_income_90_days,
+        "income_this_month": round(income.income_this_month, 2),
+        "income_last_month": round(income.income_last_month, 2),
+        "income_entries": [e.model_dump() for e in income.entries],
+        # Expense
+        "total_expenses_90_days": expense.total_expenses_90_days,
+        "expenses_this_month": round(expense.expenses_this_month, 2),
+        "expenses_last_month": round(expense.expenses_last_month, 2),
+        "expenses_by_category": expense.by_category,
+        "expense_entries": [e.model_dump() for e in expense.entries],
+        # Savings
+        "savings_goals": [g.model_dump() for g in savings.goals],
+        # Derived
+        "net_savings_90_days": net_savings,
+        # Traceability
+        "data_sources": data_sources,
+        # Freshness — ISO timestamps from each worker contract
+        "data_freshness": {
+            "income_agent": income.fetched_at.isoformat(),
+            "expense_agent": expense.fetched_at.isoformat(),
+            "savings_agent": savings.fetched_at.isoformat(),
+        },
     }
