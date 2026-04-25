@@ -25,7 +25,15 @@ export default function Insights() {
     setLoading(true)
     try {
       const data = await queryInsights(question)
-      const aiMsg: InsightMessage = { role: 'assistant', content: data.answer || data.response || data.message || JSON.stringify(data), timestamp: new Date().toISOString() }
+      const aiMsg: InsightMessage = {
+        role: 'assistant',
+        content: data.answer || data.response || data.message || JSON.stringify(data),
+        timestamp: new Date().toISOString(),
+        decision: data.decision,
+        reason: data.reason,
+        retried: data.retried,
+        data_sources: data.data_sources,
+      }
       setMessages(m => [...m, aiMsg])
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Sorry, I could not process your request. Please try again.', timestamp: new Date().toISOString() }])
@@ -64,17 +72,42 @@ export default function Insights() {
               {msg.role === 'assistant' && (
                 <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginTop: 2 }}>✨</div>
               )}
-              <div style={{
-                maxWidth: '70%',
-                padding: '12px 16px',
-                borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-                backgroundColor: msg.role === 'user' ? '#3b82f6' : '#0f172a',
-                color: '#f1f5f9',
-                fontSize: 14,
-                lineHeight: 1.6,
-                border: msg.role === 'assistant' ? '1px solid #334155' : 'none',
-              }}>
-                {msg.content}
+              <div style={{ maxWidth: '70%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: msg.role === 'user' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                  backgroundColor: msg.role === 'user' ? '#3b82f6' : '#0f172a',
+                  color: '#f1f5f9',
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  border: msg.role === 'assistant' ? '1px solid #334155' : 'none',
+                }}>
+                  {msg.content}
+                </div>
+                {msg.role === 'assistant' && msg.decision && (() => {
+                  const badges: Record<string, { label: string; color: string; bg: string }> = {
+                    accept:    { label: '✓ Accepted',      color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
+                    retry:     { label: '↺ Accepted after retry', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+                    fallback:  { label: '⚡ SQL Fallback',  color: '#6366f1', bg: 'rgba(99,102,241,0.1)' },
+                    sql_local: { label: '⚡ SQL (local)',   color: '#64748b', bg: 'rgba(100,116,139,0.1)' },
+                  }
+                  const b = badges[msg.decision] || { label: msg.decision, color: '#64748b', bg: 'transparent' }
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, color: b.color, backgroundColor: b.bg, padding: '2px 8px', borderRadius: 4, border: `1px solid ${b.color}33` }}>
+                        {b.label}
+                      </span>
+                      {msg.reason && msg.reason !== 'numbers_verified' && msg.reason !== 'no_llm_key' && (
+                        <span style={{ fontSize: 11, color: '#475569' }}>{msg.reason.replace(/_/g, ' ')}</span>
+                      )}
+                      {msg.data_sources && msg.data_sources.length > 0 && (
+                        <span style={{ fontSize: 11, color: '#334155', backgroundColor: '#0f172a', padding: '2px 8px', borderRadius: 4, border: '1px solid #1e293b' }}>
+                          {msg.data_sources.map(s => s.replace('_agent', '')).join(' · ')}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           ))}

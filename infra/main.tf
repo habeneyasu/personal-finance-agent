@@ -79,6 +79,7 @@ module "api_gateway" {
   stage_name            = "v1"
   cognito_user_pool_arn = module.cognito.user_pool_arn
   environment           = var.environment
+  cors_allow_origin      = local.cors_allow_origin
 }
 
 # ─────────────────────────────────────────────
@@ -92,6 +93,12 @@ locals {
     AWS_REGION_NAME  = var.aws_region
   }
   api_source_arn = "${module.api_gateway.rest_api_execution_arn}/*/*"
+  # Browsers allow only one Access-Control-Allow-Origin value; comma-separated origins break preflight.
+  cors_allow_origin = var.cors_allow_origin != "" ? var.cors_allow_origin : (
+    var.environment == "production"
+    ? "http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com"
+    : "http://localhost:5173"
+  )
 }
 
 # ─────────────────────────────────────────────
@@ -256,7 +263,7 @@ resource "aws_api_gateway_integration_response" "v1_health_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -325,7 +332,7 @@ resource "aws_api_gateway_integration_response" "income_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -428,7 +435,7 @@ resource "aws_api_gateway_integration_response" "expenses_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -497,7 +504,7 @@ resource "aws_api_gateway_integration_response" "goals_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -589,7 +596,7 @@ resource "aws_api_gateway_integration_response" "insights_query_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -663,7 +670,7 @@ resource "aws_api_gateway_integration_response" "auth_register_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -730,7 +737,7 @@ resource "aws_api_gateway_integration_response" "auth_login_options" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET,POST,PUT,DELETE,HEAD'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'http://localhost:5173,http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${local.cors_allow_origin}'"
   }
 }
 
@@ -768,12 +775,19 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.goals.id,
       aws_api_gateway_resource.insights_query.id,
       aws_api_gateway_resource.auth_login.id,
+      local.cors_allow_origin,
     ]))
   }
 
   lifecycle {
     create_before_destroy = true
   }
+}
+
+resource "aws_api_gateway_stage" "v1" {
+  deployment_id = aws_api_gateway_deployment.main.id
+  rest_api_id     = module.api_gateway.rest_api_id
+  stage_name      = "v1"
 }
 
 # ─────────────────────────────────────────────
