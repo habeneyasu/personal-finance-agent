@@ -1,290 +1,302 @@
-# PFIP Production Deployment Guide
+# PFIP Developer and Deployment Guide
 
-## Overview
+This document is the single technical reference for both local development and AWS production deployment of the Personal Financial Intelligence Platform (PFIP).
 
-This guide provides comprehensive instructions for deploying the Personal Finance Intelligence Platform (PFIP) to AWS production environment.
+---
 
-## Architecture Overview
+## 1) What PFIP Does
 
-PFIP is built on a serverless AWS architecture with the following components:
+PFIP is an AI-native personal finance platform where users track income, expenses, and savings goals, then query insights in natural language.
 
-### Infrastructure Components
-- **API Gateway**: REST API with CORS support
-- **Lambda Functions**: 6 microservices (auth, income, expense, savings, insights, mcp-server)
-- **Aurora Serverless**: PostgreSQL-compatible database
-- **Cognito**: User authentication (configured but not used in current auth implementation)
-- **S3**: Frontend static hosting
-- **CloudFront**: CDN for frontend (optional)
-- **Secrets Manager**: Secure credential storage
-- **CloudWatch**: Logging and monitoring
+Key architecture decisions:
+- FastAPI services run locally as one app (`scripts/run_api_local.py`) and in production as Lambda handlers (via Mangum).
+- PostgreSQL is the system of record (Docker locally, Aurora Serverless in AWS).
+- LLM calls are used for categorization and insights, with deterministic fallback paths.
+- MCP server exposes finance capabilities as AI tools/resources.
 
-### Application Architecture
-- **Frontend**: React/Vite application
-- **Backend**: Python FastAPI microservices
-- **AI Integration**: AWS Bedrock with Nova Lite model
-- **Authentication**: Custom JWT-based auth system
+---
+
+## 2) High-Level Architecture
+
+### Local
+- Frontend: React + Vite (`http://localhost:5173`)
+- Backend API: FastAPI (`http://localhost:8000`)
+- DB: Postgres Docker container (`localhost:5433`)
+- Optional: MCP Inspector + local MCP runner
+
+### Production (AWS)
+- API Gateway + Lambda microservices
+- Aurora Serverless v2 (PostgreSQL)
+- S3 static frontend hosting
+- IAM + Secrets Manager + CloudWatch
+
+Core service endpoints:
+- `GET/POST /v1/income`
+- `GET/POST /v1/expenses`
+- `GET/POST /v1/goals`
+- `POST /v1/insights/query`
+- `GET /v1/metrics`
+- Auth: `/auth/register`, `/auth/login`, `/auth/me` (local dev API)
+
+---
+
+## 3) Repository Map
+
+```text
+src/
+  shared/          # auth, db, llm, logging, exception helpers
+  income_agent/    # income handlers
+  expense_agent/   # expense handlers + categorizer
+  savings_agent/   # goals + calculator
+  insights_agent/  # context builder + judge
+  metrics_agent/   # quality/metrics endpoint
+  mcp_server/      # MCP tools/resources server
+  auth_api/        # local auth endpoints
+frontend/          # React dashboard
+infra/             # Terraform IaC
+scripts/           # local runners, migration, seed, packaging
+tests/unit/        # unit tests
+docker-compose.yml # local postgres
+```
+
+---
+
+## 4) Local Development Quick Start
+
+From repo root:
+
+```bash
+# 1) Start local Postgres
+docker compose up -d
+
+# 2) Apply schema + seed demo data
+export $(cat .env.local | grep -v '^#' | grep -v '^$' | xargs)
+python3 scripts/migrate.py --env local
+python3 scripts/seed_demo.py --env local --reset
+
+# 3) Start backend API
+python3 -m uvicorn scripts.run_api_local:app --port 8000 --reload
+
+# 4) Start frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` and login with:
+- `demo@pfip.dev`
+- `Demo1234!`
+
+Optional MCP inspector:
+
+```bash
+npx @modelcontextprotocol/inspector python3 scripts/run_mcp_local.py
+```
+
+---
+
+## 5) Request and Auth Flow
+
+### Local auth flow
+1. Frontend calls `/auth/login`.
+2. Auth API validates bcrypt hash and returns JWT.
+3. `run_api_local.py` middleware parses JWT and injects mock API Gateway claims.
+4. Agent handlers read `user_id` from request scope via shared auth helper.
+
+### Production auth flow
+- API Gateway authorizer validates token before Lambda invocation.
+- Same shared user-id extraction path is used in handlers.
+
+---
+
+## 6) Database Notes
+
+Local DB defaults are set by `scripts/run_api_local.py`:
+- `DB_HOST=localhost`
+- `DB_PORT=5433`
+- `DB_NAME=pfip`
+- `DB_USER=pfip_admin`
+- `DB_PASSWORD=pfip_local_password`
+
+Primary tables:
+- `users`
+- `income_entries`
+- `expense_entries`
+- `savings_goals`
+
+---
+
+## 7) AI and Insights Behavior
+
+- Expense categorization priority:
+  1. Cerebras (if key configured)
+  2. Bedrock (non-local fallback)
+  3. Local rule-based categorizer
+- Insights endpoint builds structured context and prompts the LLM.
+- Judge logic validates numeric claims and falls back to SQL summaries when needed.
+
+---
+
+## 8) Testing
+
+```bash
+ENVIRONMENT=local pytest tests/unit/ --cov=src -q
+```
+
+---
+
+## 9) AWS Deployment Runbook
 
 ## Prerequisites
-
-### Required Tools
-- AWS CLI v2.34.30+
-- Terraform v1.14.9+
-- Node.js v20.19.5+
+- AWS CLI configured
+- Terraform installed
 - Python 3.11+
-- Git
+- Node 20+
+- IAM rights for Lambda, API Gateway, RDS/Aurora, S3, CloudWatch, Secrets Manager
 
-### AWS Account Setup
-1. AWS account with appropriate permissions
-2. VPC and subnets configured
-3. Bedrock model access enabled (amazon.nova-lite-v1:0)
-4. IAM roles for Lambda execution
+## 9.1 Gather AWS values
 
-## Deployment Steps
-
-### 1. Environment Configuration
-
-#### AWS Values Gathering
 ```bash
-# Get AWS account ID
 aws sts get-caller-identity --query Account --output text
-
-# Get VPC ID (using default VPC)
 aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" --query "Vpcs[0].VpcId" --output text
-
-# Get subnet IDs (using default subnets)
 aws ec2 describe-subnets --filters "Name=defaultForAz,Values=true" --query "Subnets[0:2].SubnetId" --output text
 ```
 
-#### Generate Secrets
+Generate secrets:
+
 ```bash
-# Generate JWT secret
-python3 -c "import secrets; print(secrets.token_hex(32))"
-
-# Generate API key
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-
-# Generate database password
-python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+python3 -c "import secrets; print(secrets.token_hex(32))"      # jwt_secret
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"  # pfip_api_key
+python3 -c "import secrets; print(secrets.token_urlsafe(24))"  # aurora password
 ```
 
-#### Create Terraform Variables
+## 9.2 Configure Terraform
+
 Create `infra/terraform.tfvars`:
+
 ```hcl
-# AWS Configuration
-aws_region = "us-east-1"
-environment = "production"
-project_name = "pfip"
-
-# Database Configuration
+aws_region             = "us-east-1"
+environment            = "production"
+project_name           = "pfip"
 aurora_master_password = "your_secure_password"
-
-# VPC Configuration
-vpc_id = "your_vpc_id"
-subnet_ids = [
-  "your_subnet_1",
-  "your_subnet_2"
-]
-
-# Authentication
-jwt_secret = "your_jwt_secret"
-pfip_api_key = "your_api_key"
+vpc_id                 = "vpc-xxxx"
+subnet_ids             = ["subnet-aaaa", "subnet-bbbb"]
+jwt_secret             = "your_generated_jwt_secret"
+pfip_api_key           = "your_generated_api_key"
 ```
 
-### 2. Terraform Deployment
+## 9.3 Deploy infrastructure
 
-#### Initialize Terraform
 ```bash
 cd infra
 terraform init
-```
-
-#### Create Terraform State Bucket
-```bash
-aws s3 mb s3://pfip-terraform-state-YOUR_ACCOUNT_ID --region us-east-1
-```
-
-#### Deploy Infrastructure
-```bash
 terraform plan
 terraform apply
 ```
 
-### 3. Lambda Function Deployment
+## 9.4 Package and deploy Lambda code
 
-#### Package Lambda Functions
+From repo root:
+
 ```bash
-# Package all Lambda functions
-scripts/package_lambdas.sh
+bash scripts/package_lambdas.sh
 
-# Manual packaging for auth API (if needed)
-cd src/auth_api
-pip install bcrypt --platform manylinux2014_x86_64 --only-binary=:all: -t .
-zip -r ../../dist/auth_api_final.zip . -x "*.pyc" "__pycache__/*"
+for agent in income expense savings insights mcp auth; do
+  aws lambda update-function-code \
+    --function-name "pfip-production-${agent}-agent" \
+    --zip-file "fileb://dist/${agent}_agent.zip"
+done
 ```
 
-#### Deploy Lambda Functions
-```bash
-# Deploy main Lambda functions
-aws lambda update-function-code --function-name pfip-production-income-agent --zip-file fileb://dist/income_agent.zip
-aws lambda update-function-code --function-name pfip-production-expense-agent --zip-file fileb://dist/expense_agent.zip
-aws lambda update-function-code --function-name pfip-production-savings-agent --zip-file fileb://dist/savings_agent.zip
-aws lambda update-function-code --function-name pfip-production-insights-agent --zip-file fileb://dist/insights_agent.zip
-aws lambda update-function-code --function-name pfip-production-mcp-server --zip-file fileb://dist/mcp_server.zip
+If auth package differs in your setup, deploy `auth_api` zip explicitly.
 
-# Deploy auth API
-aws lambda update-function-code --function-name pfip-production-auth-api --zip-file fileb://dist/auth_api_final.zip
+## 9.5 Run production migration
+
+```bash
+export DB_SECRET_ARN=$(cd infra && terraform output -raw aurora_secret_arn)
+python3 scripts/migrate.py --env production
 ```
 
-### 4. Frontend Deployment
+## 9.6 Build and deploy frontend
 
-#### Configure API URL
-Update `frontend/src/api.ts`:
-```typescript
-const BASE_URL = import.meta.env.VITE_API_URL || 'https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/v1'
-```
-
-#### Build and Deploy Frontend
 ```bash
+API_URL=$(cd infra && terraform output -raw api_gateway_url)
+echo "VITE_API_URL=${API_URL}" > frontend/.env.production
+
 cd frontend
+npm ci
 npm run build
-aws s3 sync dist/ s3://your-frontend-bucket --delete
+
+# Replace with terraform output bucket name
+aws s3 sync dist/ s3://pfip-production-frontend/ --delete
 ```
-
-### 5. Database Setup
-
-#### Run Database Migration
-```bash
-export DB_SECRET_ARN=arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:pfip/production/db-credentials-SECRET_ID
-python3 scripts/migrate.py
-```
-
-## Production URLs
-
-### Application Endpoints
-- **Frontend**: `http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com`
-- **API Gateway**: `https://your-api-id.execute-api.us-east-1.amazonaws.com/v1`
-- **Auth Endpoints**: 
-  - `POST /v1/auth/register`
-  - `POST /v1/auth/login`
-  - `GET /v1/auth/health`
-
-### API Endpoints
-- **Income**: `GET/POST /v1/income`
-- **Expenses**: `GET/POST /v1/expenses`
-- **Goals**: `GET/POST /v1/goals`
-- **Insights**: `POST /v1/insights/query`
-- **Metrics**: `GET /v1/metrics`
-
-## Monitoring and Logging
-
-### CloudWatch Logs
-- **Lambda Logs**: `/aws/lambda/pfip-production-*`
-- **API Gateway Logs**: Available through execution logs
-- **Database Logs**: Aurora PostgreSQL logs
-
-### Monitoring Setup
-```bash
-# Create CloudWatch dashboards
-aws logs create-log-group --log-group-name /aws/lambda/pfip-production-metrics --retention-in-days 7
-
-# Set up alarms (examples)
-aws cloudwatch put-metric-alarm --alarm-name "PFIP-HighErrorRate" --metric-name Errors --namespace AWS/Lambda --threshold 10 --comparison-operator GreaterThanThreshold --evaluation-periods 2
-```
-
-## Security Configuration
-
-### Network Security
-- VPC isolation with private subnets
-- Security groups for Lambda functions
-- API Gateway with CORS configuration
-- Secrets Manager for credential storage
-
-### IAM Roles
-- Lambda execution roles with least privilege
-- Cross-service communication via IAM policies
-- Bedrock model access permissions
-
-## Troubleshooting
-
-### Common Issues
-
-#### Lambda Deployment Issues
-- **Pydantic Dependencies**: Use platform-specific packages
-- **Missing Handler**: Ensure handler.py is in zip root
-- **Import Errors**: Check package structure and dependencies
-
-#### CORS Issues
-- **Preflight Failures**: Ensure OPTIONS method configured
-- **Origin Headers**: Check CORS configuration in API Gateway
-- **Integration Issues**: Verify deployment includes CORS resources
-
-#### Database Connectivity
-- **Timeout Issues**: Check Aurora cluster status
-- **Authentication**: Verify Secrets Manager access
-- **Network Configuration**: Ensure VPC connectivity
-
-### Debug Commands
-```bash
-# Check Lambda logs
-aws logs filter-log-events --log-group-name /aws/lambda/pfip-production-auth-api --start-time $(date -d '5 minutes ago' +%s)000
-
-# Test API endpoints
-curl -X POST https://your-api.execute-api.us-east-1.amazonaws.com/v1/auth/register -H "Content-Type: application/json" -d '{"email":"test@example.com","password":"testpassword123"}'
-
-# Check API Gateway deployment
-aws apigateway get-deployments --rest-api-id your-api-id
-```
-
-## Maintenance
-
-### Regular Tasks
-- Monitor Lambda function performance
-- Review CloudWatch metrics and logs
-- Update dependencies as needed
-- Backup database regularly
-- Rotate secrets periodically
-
-### Scaling Considerations
-- Lambda auto-scaling configured
-- Aurora Serverless auto-scaling
-- API Gateway throttling limits
-- S3 bandwidth considerations
-
-## Rollback Procedures
-
-### Terraform Rollback
-```bash
-terraform plan -destroy
-terraform apply -destroy
-# Then redeploy with previous configuration
-```
-
-### Lambda Rollback
-```bash
-# Update with previous working version
-aws lambda update-function-code --function-name function-name --zip-file fileb://dist/previous-version.zip
-```
-
-### Frontend Rollback
-```bash
-# Deploy previous frontend build
-aws s3 sync dist/previous/ s3://your-frontend-bucket --delete
-```
-
-## Support
-
-### Contact Information
-- **Development Team**: [team@pfip.com]
-- **Infrastructure Support**: [infra@pfip.com]
-- **Emergency Contact**: [emergency@pfip.com]
-
-### Documentation
-- **API Documentation**: Available at `/docs/api`
-- **Architecture Guide**: Available at `/docs/architecture`
-- **Troubleshooting Guide**: Available at `/docs/troubleshooting`
 
 ---
 
-**Last Updated**: April 23, 2026
-**Version**: 1.0
-**Environment**: Production
+## 10) Post-Deploy Verification
+
+Smoke tests:
+
+```bash
+curl -i "$API_URL/health"
+curl -i "$API_URL/v1/metrics"
+curl -i -X POST "$API_URL/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@pfip.dev","password":"Demo1234!"}'
+```
+
+Check logs:
+
+```bash
+aws logs tail /aws/lambda/pfip-production-income-agent --since 10m
+aws logs tail /aws/lambda/pfip-production-expense-agent --since 10m
+```
+
+---
+
+## 11) Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `ERR_CONNECTION_REFUSED :8000` | API not running | Start uvicorn on port 8000 |
+| `500` on `/v1/income` or `/v1/expenses` locally | Postgres down | `docker compose up -d` |
+| Browser says "CORS" + backend failing | Error response path | Ensure using current `run_api_local.py` |
+| `double /v1/v1/...` requests | Bad `VITE_API_URL` | Remove trailing `/v1` in env var |
+| Bedrock/Cerebras fallback answers | Missing API key or provider issue | Verify env vars and provider access |
+
+Useful commands:
+
+```bash
+# Local
+docker compose ps
+curl -i http://127.0.0.1:8000/health
+
+# AWS
+aws apigateway get-deployments --rest-api-id <api-id>
+aws logs filter-log-events --log-group-name /aws/lambda/pfip-production-auth-api --start-time $(date -d '5 minutes ago' +%s)000
+```
+
+---
+
+## 12) Operations and Rollback
+
+Routine tasks:
+- monitor Lambda error rates and duration
+- review CloudWatch logs
+- rotate secrets
+- keep dependencies updated
+
+Rollback examples:
+
+```bash
+# Lambda rollback
+aws lambda update-function-code --function-name <fn-name> --zip-file fileb://dist/<previous>.zip
+
+# Frontend rollback
+aws s3 sync dist/previous/ s3://<frontend-bucket>/ --delete
+```
+
+---
+
+**Last updated:** Apr 25, 2026  
+**Scope:** Local development + production deployment
