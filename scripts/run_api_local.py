@@ -45,7 +45,7 @@ from jose import jwt as jose_jwt, JWTError
 from src.income_agent.handler import create_income, list_income
 from src.expense_agent.handler import create_expense, list_expenses
 from src.savings_agent.handler import create_goal, list_goals
-from src.insights_agent.handler import query_insights
+from src.insights_agent.handler import query_insights, get_metrics, get_agent_metrics, get_failure_metrics, get_accuracy_metrics
 from src.metrics_agent.handler import get_metrics
 
 JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
@@ -98,6 +98,10 @@ app.post("/v1/goals", status_code=201)(create_goal)
 app.get("/v1/goals")(list_goals)
 
 app.post("/v1/insights/query")(query_insights)
+app.get("/v1/insights/metrics")(get_metrics)
+app.get("/v1/insights/metrics/agents")(get_agent_metrics)
+app.get("/v1/insights/metrics/failures")(get_failure_metrics)
+app.get("/v1/insights/metrics/accuracy")(get_accuracy_metrics)
 app.get("/v1/metrics")(get_metrics)
 
 # Add endpoints without /v1 prefix for frontend compatibility
@@ -111,6 +115,10 @@ app.post("/goals", status_code=201)(create_goal)
 app.get("/goals")(list_goals)
 
 app.post("/insights/query")(query_insights)
+app.get("/insights/metrics")(get_metrics)
+app.get("/insights/metrics/agents")(get_agent_metrics)
+app.get("/insights/metrics/failures")(get_failure_metrics)
+app.get("/insights/metrics/accuracy")(get_accuracy_metrics)
 app.get("/metrics")(get_metrics)
 
 # Mount auth routes directly

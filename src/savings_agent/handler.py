@@ -43,31 +43,22 @@ async def create_goal(request: Request):
     try:
         with get_cursor(conn) as cur:
             cur.execute(
-                """
-                INSERT INTO savings_goals (user_id, name, target_amount, current_amount, target_date)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id, user_id, name, target_amount, current_amount, target_date, created_at
-                """,
-                (
-                    user_id,
-                    goal_in.name,
-                    str(goal_in.target_amount),
-                    "0",
-                    goal_in.target_date,
-                ),
+                "INSERT INTO savings_goals (user_id, name, target_amount, current_amount, initial_amount, target_date) "
+                "VALUES (%s, %s, %s, %s, %s, %s) "
+                "RETURNING id, user_id, name, target_amount, current_amount, initial_amount, target_date, created_at",
+                (user_id, goal_in.name, str(goal_in.target_amount), str(goal_in.initial_amount),
+                 str(goal_in.initial_amount), goal_in.target_date),
             )
             row = cur.fetchone()
     finally:
         conn.close()
 
     goal = SavingsGoal(
-        id=row[0],
-        user_id=row[1],
-        name=row[2],
+        id=row[0], user_id=row[1], name=row[2],
         target_amount=Decimal(str(row[3])),
         current_amount=Decimal(str(row[4])),
-        target_date=row[5],
-        created_at=row[6],
+        initial_amount=Decimal(str(row[5])),
+        target_date=row[6], created_at=row[7],
     )
 
     _logger.info(
@@ -99,7 +90,7 @@ async def list_goals(request: Request):
             # Fetch all goals for user
             cur.execute(
                 """
-                SELECT id, user_id, name, target_amount, current_amount, target_date, created_at
+                SELECT id, user_id, name, target_amount, current_amount, initial_amount, target_date, created_at
                 FROM savings_goals
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -111,7 +102,7 @@ async def list_goals(request: Request):
             results = []
             for row in goal_rows:
                 goal_id = row[0]
-                goal_created_at = row[6]
+                goal_created_at = row[7]
 
                 # Income since goal creation
                 cur.execute(
@@ -127,7 +118,8 @@ async def list_goals(request: Request):
                 )
                 expense_rows = cur.fetchall()
 
-                current_amount = calculate_progress(goal_created_at, income_rows, expense_rows)
+                current_amount = calculate_progress(goal_created_at, income_rows, expense_rows,
+                                                    initial_amount=Decimal(str(row[5])))
 
                 # Income and expenses for last 30 days (for monthly rate)
                 cur.execute(
@@ -165,7 +157,8 @@ async def list_goals(request: Request):
                     name=row[2],
                     target_amount=target_amount,
                     current_amount=current_amount,
-                    target_date=row[5],
+                    initial_amount=Decimal(str(row[5])),
+                    target_date=row[6],
                     created_at=goal_created_at,
                     progress_pct=progress_pct,
                     predicted_completion_date=predicted_date,
