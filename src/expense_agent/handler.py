@@ -12,8 +12,10 @@ from src.shared.exceptions import handle_unhandled_exception
 from src.shared.logger import Logger
 from src.expense_agent.models import ExpenseEntry, ExpenseEntryCreate
 from src.expense_agent.categorizer import categorize_expense
+from src.shared.cors import add_cors_middleware
 
 app = FastAPI(title="Expense Agent")
+add_cors_middleware(app)
 _logger = Logger(service="expense-agent")
 
 
@@ -40,6 +42,20 @@ async def create_expense(request: Request):
     conn = get_connection()
     try:
         with get_cursor(conn) as cur:
+            # Ensure local dev user exists for development
+            if user_id == "00000000-0000-0000-0000-000000000001":
+                cur.execute(
+                    "INSERT INTO users (id, email, hashed_password) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (id) DO NOTHING",
+                    (user_id, "dev@local.test", "local-dev-password")
+                )
+                _logger.info(
+                    "Created local dev user",
+                    user_id=str(user_id),
+                    operation="create_expense",
+                    status="ok",
+                )
+            
             cur.execute(
                 "INSERT INTO expense_entries (user_id, amount, merchant, category, date) "
                 "VALUES (%s, %s, %s, %s, %s) "

@@ -36,10 +36,10 @@ variable "vpc_id" {
 }
 
 variable "jwt_secret" {
-  description = "Secret key for signing local JWT tokens (min 32 chars)"
+  description = "Secret key for signing JWT tokens in deployed environments (min 32 chars)"
   type        = string
   sensitive   = true
-  default     = "REPLACE_WITH_STRONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+  # No default — provide via TF_VAR_jwt_secret or terraform.tfvars
 }
 
 variable "bedrock_model_id" {
@@ -52,11 +52,11 @@ variable "pfip_api_key" {
   description = "API key for MCP server authentication"
   type        = string
   sensitive   = true
-  default     = "REPLACE_WITH_STRONG_API_KEY"
+  # No default — provide via TF_VAR_pfip_api_key or terraform.tfvars
 }
 
 variable "cors_allow_origin" {
-  description = "Single browser origin for Access-Control-Allow-Origin on API Gateway MOCK CORS responses. Comma-separated lists are invalid per CORS. Leave empty to derive: production S3 website for environment=production, else http://localhost:5173."
+  description = "Single browser origin for Access-Control-Allow-Origin on API Gateway MOCK CORS responses. Leave empty to derive: production S3 website when environment=production, staging S3 website when environment=staging, else http://localhost:5173."
   type        = string
   default     = ""
 }

@@ -37,6 +37,22 @@ Required values to fill in:
 - `aurora_master_password` — strong password (min 8 chars)
 - `jwt_secret` — run: `python3 -c "import secrets; print(secrets.token_hex(32))"`
 - `pfip_api_key` — run: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+- optional `cors_allow_origin` — must be a single browser origin (never comma-separated)
+
+## Local vs AWS config (avoid mixing)
+
+Use separate config sources per environment:
+
+- **Local dev (`scripts/run_api_local.py`)**
+  - reads `.env.local`
+  - should use `ENVIRONMENT=local`
+  - frontend origin is `http://localhost:5173`
+- **AWS staging/production (`terraform apply`)**
+  - reads `infra/terraform.tfvars` or `TF_VAR_*`
+  - must set `jwt_secret`, `pfip_api_key`, DB/VPC vars
+  - CORS should be a single deployed frontend origin
+
+Do not share one comma-separated `ALLOWED_ORIGINS` string across local + AWS deploys.
 
 ## Step 3 — Enable Bedrock model access
 
@@ -90,6 +106,8 @@ done
 DB_SECRET_ARN=$(cd infra && terraform output -raw aurora_secret_arn)
 DB_SECRET_ARN=$DB_SECRET_ARN python3 scripts/migrate.py --env staging
 ```
+
+If your Aurora cluster is private, run migration from inside the VPC (bastion/SSM/VPN).
 
 ## Step 8 — Seed demo data
 

@@ -38,6 +38,14 @@ resource "aws_lambda_function" "this" {
     }
   }
 
+  dynamic "vpc_config" {
+    for_each = length(var.vpc_subnet_ids) > 0 && length(var.vpc_security_group_ids) > 0 ? [1] : []
+    content {
+      subnet_ids         = var.vpc_subnet_ids
+      security_group_ids = var.vpc_security_group_ids
+    }
+  }
+
   # Log group is managed separately below to control retention
   depends_on = [aws_cloudwatch_log_group.this]
 

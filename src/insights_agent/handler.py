@@ -40,8 +40,10 @@ from src.insights_agent.judge import (
     _sql_answer,
 )
 from src.insights_agent.models import InsightQuery, InsightResponse, OrchestrationState
+from src.shared.cors import add_cors_middleware
 
 app = FastAPI(title="Insights Agent")
+add_cors_middleware(app)
 _logger = Logger(service="insights-agent")
 
 _PROMPT_TEMPLATE = (

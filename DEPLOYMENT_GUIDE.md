@@ -183,7 +183,14 @@ vpc_id                 = "vpc-xxxx"
 subnet_ids             = ["subnet-aaaa", "subnet-bbbb"]
 jwt_secret             = "your_generated_jwt_secret"
 pfip_api_key           = "your_generated_api_key"
+# Optional but recommended for explicitness (single origin only):
+# cors_allow_origin    = "http://pfip-staging-frontend.s3-website-us-east-1.amazonaws.com"
 ```
+
+Notes:
+- Local development config belongs in `.env.local` (`ENVIRONMENT=local`).
+- AWS deployment config belongs in `infra/terraform.tfvars` / `TF_VAR_*`.
+- Do not use comma-separated values for API Gateway `cors_allow_origin`; browsers accept only one origin value in `Access-Control-Allow-Origin`.
 
 ## 9.3 Deploy infrastructure
 
@@ -210,18 +217,29 @@ done
 
 If auth package differs in your setup, deploy `auth_api` zip explicitly.
 
-## 9.5 Run production migration
+## 9.5 Run database migration (Aurora)
+
+Aurora is **private** (no route from the public internet to the cluster). Running
+`migrate.py` on your laptop with `DB_SECRET_ARN` set will **time out** — that is
+expected. Run the script from **inside the VPC** (bastion EC2, SSM port-forward
+through an instance in the VPC, VPN, or a CI runner attached to the VPC).
 
 ```bash
-export DB_SECRET_ARN=$(cd infra && terraform output -raw aurora_secret_arn)
-python3 scripts/migrate.py --env production
+export DB_SECRET_ARN="$(cd infra && terraform output -raw aurora_secret_arn)"
+python3 scripts/migrate.py --env staging
 ```
+
+(`--env` is only a log label; it does not change which database is used.)
 
 ## 9.6 Build and deploy frontend
 
 ```bash
 API_URL=$(cd infra && terraform output -raw api_gateway_url)
 echo "VITE_API_URL=${API_URL}" > frontend/.env.production
+
+# `api_gateway_url` includes the API Gateway stage (`/v1`). The frontend client
+# uses paths like `auth/login` and `v1/income` so the final URL is e.g.
+# `https://{id}.execute-api.{region}.amazonaws.com/v1/auth/login`.
 
 cd frontend
 npm ci
@@ -238,10 +256,14 @@ aws s3 sync dist/ s3://pfip-production-frontend/ --delete
 Smoke tests:
 
 ```bash
-curl -i "$API_URL/health"
-curl -i "$API_URL/v1/metrics"
-curl -i -X POST "$API_URL/auth/login" \
+# Preflight must return Access-Control-Allow-Origin (replace Origin with your S3 website URL).
+curl -i -X OPTIONS "${API_URL}/auth/login" \
+  -H "Origin: http://pfip-staging-frontend.s3-website-us-east-1.amazonaws.com" \
+  -H "Access-Control-Request-Method: POST"
+
+curl -i -X POST "${API_URL}/auth/login" \
   -H "Content-Type: application/json" \
+  -H "Origin: http://pfip-staging-frontend.s3-website-us-east-1.amazonaws.com" \
   -d '{"email":"demo@pfip.dev","password":"Demo1234!"}'
 ```
 
@@ -261,7 +283,10 @@ aws logs tail /aws/lambda/pfip-production-expense-agent --since 10m
 | `ERR_CONNECTION_REFUSED :8000` | API not running | Start uvicorn on port 8000 |
 | `500` on `/v1/income` or `/v1/expenses` locally | Postgres down | `docker compose up -d` |
 | Browser says "CORS" + backend failing | Error response path | Ensure using current `run_api_local.py` |
-| `double /v1/v1/...` requests | Bad `VITE_API_URL` | Remove trailing `/v1` in env var |
+| Login CORS from S3 website | Missing stage in API URL (`…amazonaws.com/auth/...` treats `auth` as stage) | Use `VITE_API_URL` = `terraform output -raw api_gateway_url` (includes `/v1`); redeploy frontend |
+| CORS still after infra fixes | Stale API stage or old Lambda/frontend | `terraform apply`; `curl -i -X OPTIONS "${API_URL}/auth/login" -H "Origin: …" -H "Access-Control-Request-Method: POST"` must show `access-control-allow-origin`; redeploy `auth_api` zip and S3 frontend |
+| `migrate.py` times out to Aurora | Laptop is outside VPC | Run migration from a host inside the VPC (see §9.5) |
+| `double /v1/v1/...` requests | `VITE_API_URL` and path both add `v1` | Set `VITE_API_URL` to the terraform output once; do not hand-append `/v1` again in paths |
 | Bedrock/Cerebras fallback answers | Missing API key or provider issue | Verify env vars and provider access |
 
 Useful commands:

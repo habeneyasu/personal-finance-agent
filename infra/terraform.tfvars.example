@@ -34,8 +34,14 @@ subnet_ids = [
 # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
 jwt_secret = "REPLACE_WITH_STRONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
 
+# ── MCP API Key ───────────────────────────────────────────────
+# Generate: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+pfip_api_key = "REPLACE_WITH_STRONG_API_KEY"
+
 # ── CORS (optional) ──────────────────────────────────────────
-# Leave unset to auto-pick: production → production S3 website origin; else → http://localhost:5173
+# Must be a single origin (not comma-separated). If omitted, Terraform derives one:
+# production -> http://pfip-production-frontend.s3-website-us-east-1.amazonaws.com
+# staging    -> http://pfip-staging-frontend.s3-website-us-east-1.amazonaws.com
 # cors_allow_origin = "https://your-staging-frontend.example.com"
 
 # ── Terraform State Backend ───────────────────────────────────

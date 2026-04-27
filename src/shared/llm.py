@@ -6,11 +6,13 @@ Priority:
 2. If ENVIRONMENT != local → use AWS Bedrock
 3. Fallback → raise exception (caller handles with "Other" / fallback message)
 
+LangSmith tracing is enabled automatically when LANGCHAIN_TRACING_V2=true
+and LANGCHAIN_API_KEY are set in the environment.
+
 Usage:
     from src.shared.llm import call_llm
     answer = call_llm(prompt="Your prompt here")
 """
-import json
 import logging
 import os
 import time
@@ -18,26 +20,42 @@ from typing import Optional
 
 _log = logging.getLogger(__name__)
 
-# Cerebras model — Llama 3.3 70B is fast and capable
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b")
-
-# Bedrock model fallback
 BEDROCK_MODEL = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+
+# LangSmith tracing — enabled when LANGCHAIN_TRACING_V2=true + LANGCHAIN_API_KEY set
+try:
+    from langsmith import traceable as _traceable
+    _LANGSMITH_ENABLED = bool(os.getenv("LANGCHAIN_TRACING_V2") and os.getenv("LANGCHAIN_API_KEY"))
+except ImportError:
+    _traceable = None
+    _LANGSMITH_ENABLED = False
+
+
+def _maybe_trace(name: str, metadata: dict):
+    """Return @traceable decorator if LangSmith is available, else identity."""
+    if _LANGSMITH_ENABLED and _traceable:
+        return _traceable(name=name, metadata=metadata)
+    return lambda f: f  # no-op decorator
 
 
 def call_llm(prompt: str, max_tokens: int = 256, user_id: str = None, agent: str = "unknown") -> str:
     """
     Call the configured LLM and return the response text.
-    
+
+    Automatically traced in LangSmith when LANGCHAIN_TRACING_V2=true.
     Tracks token usage and cost in llm_usage table if user_id is provided.
     Raises an exception on failure — callers should handle with fallback.
     """
     cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
 
-    if cerebras_key:
-        return _call_cerebras(prompt, cerebras_key, max_tokens, user_id, agent)
-    else:
-        return _call_bedrock(prompt, max_tokens, user_id, agent)
+    @_maybe_trace(name=f"call_llm:{agent}", metadata={"agent": agent, "user_id": user_id or "anon", "model": CEREBRAS_MODEL if cerebras_key else BEDROCK_MODEL})
+    def _run(p: str) -> str:
+        if cerebras_key:
+            return _call_cerebras(p, cerebras_key, max_tokens, user_id, agent)
+        return _call_bedrock(p, max_tokens, user_id, agent)
+
+    return _run(prompt)
 
 
 def _store_usage(user_id: str, agent: str, model: str, prompt_tokens: int,

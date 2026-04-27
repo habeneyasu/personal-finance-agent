@@ -7,25 +7,92 @@ Endpoints:
   POST /auth/login     — get JWT token
   GET  /auth/me        — get current user info
 """
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import psycopg2
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from jose import jwt
 from mangum import Mangum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
+from psycopg2 import errors as pg_errors
 
 from src.shared.db import get_connection, get_cursor
-from src.shared.exceptions import handle_unhandled_exception
+from src.shared.cors import cors_headers
+
+_logger = logging.getLogger(__name__)
 
 app = FastAPI(title="PFIP Auth")
+
+def get_cors_headers(origin: str | None = None) -> dict:
+    """Use shared CORS policy so auth and other agents stay aligned."""
+    return cors_headers(origin)
+
+# CORS middleware for all responses
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    response = await call_next(request)
+    origin = request.headers.get("origin") or request.headers.get("Origin")
+    cors_headers = get_cors_headers(origin)
+    
+    for header, value in cors_headers.items():
+        response.headers[header] = value
+    
+    return response
 
 JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
+
+
+@app.exception_handler(pg_errors.UndefinedTable)
+async def pg_undefined_table_handler(request: Request, exc: pg_errors.UndefinedTable):
+    """Aurora reachable but schema not applied — typical after first terraform apply."""
+    _logger.warning("PostgreSQL undefined relation: %s", exc)
+    origin = request.headers.get("origin") or request.headers.get("Origin")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "database_schema_missing",
+            "status": 503,
+            "message": (
+                "PFIP tables are missing on this database. Run scripts/migrate.py from a "
+                "host inside the VPC (or port-forward to Aurora), then retry."
+            ),
+        },
+        headers=get_cors_headers(origin),
+    )
+
+
+@app.exception_handler(psycopg2.OperationalError)
+async def pg_operational_handler(request: Request, exc: psycopg2.OperationalError):
+    _logger.warning("PostgreSQL operational error: %s", exc)
+    origin = request.headers.get("origin") or request.headers.get("Origin")
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "database_unavailable",
+            "status": 503,
+            "message": "Could not reach PostgreSQL. Check Aurora status, security groups, and VPC routing.",
+        },
+        headers=get_cors_headers(origin),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Return JSON + CORS headers (API Gateway never adds CORS to raw Lambda error dicts)."""
+    _logger.exception("Unhandled error in auth API: %s", exc)
+    origin = request.headers.get("origin") or request.headers.get("Origin")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "internal_server_error", "status": 500},
+        headers=get_cors_headers(origin),
+    )
 
 
 class RegisterRequest(BaseModel):
@@ -42,14 +109,8 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.islower() for c in v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one number")
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
         return v
 
 
@@ -72,6 +133,17 @@ def _error(detail: str, status: int) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": detail, "status": status})
 
 
+def _validation_error_message(exc: ValidationError) -> str:
+    """Single user-facing line from Pydantic (avoids dumping the full error blob)."""
+    errs = exc.errors()
+    if not errs:
+        return "Invalid input"
+    msg = errs[0].get("msg", "Invalid input")
+    if isinstance(msg, str) and msg.startswith("Value error, "):
+        return msg[len("Value error, ") :]
+    return str(msg)
+
+
 @app.get("/v1")
 async def health_v1():
     return JSONResponse({"status": "ok", "service": "pfip-auth-api"})
@@ -83,6 +155,8 @@ async def register(request: Request):
     try:
         body = await request.json()
         req = RegisterRequest(**body)
+    except ValidationError as e:
+        return _error(_validation_error_message(e), 422)
     except Exception as e:
         return _error(str(e), 400)
 
@@ -122,6 +196,8 @@ async def login(request: Request):
     try:
         body = await request.json()
         req = LoginRequest(**body)
+    except ValidationError as e:
+        return _error(_validation_error_message(e), 422)
     except Exception as e:
         return _error(str(e), 400)
 
@@ -151,6 +227,18 @@ async def login(request: Request):
     })
 
 
+@app.options("/auth/register")
+@app.options("/v1/auth/register")
+@app.options("/auth/login")
+@app.options("/v1/auth/login")
+@app.options("/auth/me")
+@app.options("/v1/auth/me")
+async def options_handler(request: Request):
+    """Handle CORS preflight requests."""
+    origin = request.headers.get("origin") or request.headers.get("Origin")
+    cors_headers = get_cors_headers(origin)
+    return JSONResponse(content={"message": "CORS preflight successful"}, headers=cors_headers)
+
 @app.get("/auth/me")
 @app.get("/v1/auth/me")
 async def me(request: Request):
@@ -172,6 +260,5 @@ async def me(request: Request):
 _mangum = Mangum(app)
 
 
-@handle_unhandled_exception
 def lambda_handler(event: dict, context) -> dict:
     return _mangum(event, context)

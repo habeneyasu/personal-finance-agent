@@ -46,3 +46,15 @@ variable "api_gateway_source_arn" {
   description = "ARN of the API Gateway execution (used to scope Lambda permission)"
   type        = string
 }
+
+variable "vpc_subnet_ids" {
+  description = "When set (non-empty), Lambda runs in this VPC to reach private resources (e.g. Aurora)"
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_security_group_ids" {
+  description = "Security groups for the Lambda VPC config (required when vpc_subnet_ids is set)"
+  type        = list(string)
+  default     = []
+}

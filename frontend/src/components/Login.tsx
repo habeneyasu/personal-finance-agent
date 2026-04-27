@@ -3,6 +3,19 @@ import { login, register } from '../api'
 
 interface Props { onLogin: (token: string, email: string) => void }
 
+function formatAuthError(err: unknown): string {
+  const r = err as { response?: { data?: { error?: string; detail?: unknown } } }
+  const data = r.response?.data
+  if (data?.error && typeof data.error === 'string') return data.error
+  const d = data?.detail
+  if (typeof d === 'string') return d.replace(/\s*For further information visit.*$/s, '').trim()
+  if (Array.isArray(d) && d[0] && typeof d[0] === 'object' && 'msg' in d[0]) {
+    const msg = String((d[0] as { msg: string }).msg)
+    return msg.replace(/^Value error,\s*/i, '')
+  }
+  return 'Authentication failed.'
+}
+
 export default function Login({ onLogin }: Props) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -27,9 +40,9 @@ export default function Login({ onLogin }: Props) {
         console.log('No token found in response')
         setError('Unexpected response from server.')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.log('Login error:', err)
-      setError(err?.response?.data?.detail || err?.response?.data?.error || 'Authentication failed.')
+      setError(formatAuthError(err))
     } finally {
       setLoading(false)
     }
@@ -77,6 +90,12 @@ export default function Login({ onLogin }: Props) {
                 style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #334155', backgroundColor: '#0f172a', color: '#f1f5f9', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
+            {mode === 'register' && (
+              <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                Password must be at least 6 characters for quick testing
+                (e.g. <span style={{ fontFamily: 'monospace', color: '#94a3b8' }}>test123</span>).
+              </p>
+            )}
 
             {error && (
               <div role="alert" style={{ padding: '10px 14px', borderRadius: 8, backgroundColor: '#1c0a0a', border: '1px solid #f43f5e', color: '#f43f5e', fontSize: 13 }}>
@@ -106,7 +125,7 @@ export default function Login({ onLogin }: Props) {
 
         {/* Demo hint */}
         <div style={{ marginTop: 20, padding: '12px 16px', borderRadius: 10, backgroundColor: '#1e293b', border: '1px solid #334155', fontSize: 12, color: '#64748b', textAlign: 'center' }}>
-          Demo credentials: <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>demo@pfip.dev</span> / <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>Demo1234!</span>
+          Demo credentials: <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>demo@pfip.dev</span> / <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>test123</span>
         </div>
       </div>
     </div>

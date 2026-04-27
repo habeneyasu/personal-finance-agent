@@ -24,8 +24,10 @@ from src.shared.auth import AuthError, get_user_id_from_event
 from src.shared.db import get_connection
 from src.shared.exceptions import handle_unhandled_exception
 from src.shared.logger import Logger
+from src.shared.cors import add_cors_middleware
 
 app = FastAPI(title="Metrics Agent")
+add_cors_middleware(app)
 _logger = Logger(service="metrics-agent")
 
 BASELINES = {

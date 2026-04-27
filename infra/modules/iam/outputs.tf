@@ -18,6 +18,11 @@ output "insights_agent_role_arn" {
   value       = aws_iam_role.insights_agent.arn
 }
 
+output "metrics_agent_role_arn" {
+  description = "ARN of the IAM role for the Metrics Agent Lambda"
+  value       = aws_iam_role.metrics_agent.arn
+}
+
 output "mcp_server_role_arn" {
   description = "ARN of the IAM role for the MCP Server Lambda"
   value       = aws_iam_role.mcp_server.arn
