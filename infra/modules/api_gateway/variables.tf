@@ -5,9 +5,9 @@ variable "api_name" {
 }
 
 variable "stage_name" {
-  description = "Deployment stage name (e.g. v1)"
+  description = "Deployment stage name (e.g. api)"
   type        = string
-  default     = "v1"
+  default     = "api"
 }
 
 variable "cognito_user_pool_arn" {

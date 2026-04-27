@@ -69,6 +69,7 @@ package_agent "income_agent"   "src/income_agent"
 package_agent "expense_agent"  "src/expense_agent"
 package_agent "savings_agent"  "src/savings_agent"
 package_agent "insights_agent" "src/insights_agent"
+package_agent "metrics_agent"  "src/metrics_agent"
 package_mcp_server
 package_agent "auth_api"       "src/auth_api"
 

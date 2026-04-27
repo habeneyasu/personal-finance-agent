@@ -12,8 +12,10 @@ from src.shared.exceptions import handle_unhandled_exception
 from src.shared.logger import Logger
 from src.savings_agent.models import SavingsGoal, SavingsGoalCreate, SavingsGoalWithProgress
 from src.savings_agent.calculator import calculate_monthly_rate, calculate_progress, predict_completion
+from src.shared.cors import add_cors_middleware
 
 app = FastAPI(title="Savings Goal Agent")
+add_cors_middleware(app)
 _logger = Logger(service="savings-agent")
 
 
@@ -42,6 +44,20 @@ async def create_goal(request: Request):
     conn = get_connection()
     try:
         with get_cursor(conn) as cur:
+            # Ensure local dev user exists for development
+            if user_id == "00000000-0000-0000-0000-000000000001":
+                cur.execute(
+                    "INSERT INTO users (id, email, hashed_password) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (id) DO NOTHING",
+                    (user_id, "dev@local.test", "local-dev-password")
+                )
+                _logger.info(
+                    "Created local dev user",
+                    user_id=str(user_id),
+                    operation="create_goal",
+                    status="ok",
+                )
+            
             cur.execute(
                 "INSERT INTO savings_goals (user_id, name, target_amount, current_amount, initial_amount, target_date) "
                 "VALUES (%s, %s, %s, %s, %s, %s) "

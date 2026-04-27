@@ -79,6 +79,7 @@ resource "aws_rds_cluster" "this" {
 
   # MVP: deletion protection disabled for rapid iteration; enable in production
   deletion_protection = false
+  apply_immediately   = true
 
   serverlessv2_scaling_configuration {
     min_capacity = 0.5

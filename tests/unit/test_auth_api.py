@@ -54,33 +54,63 @@ class TestRegister:
         assert resp.status_code == 409
         assert "already registered" in resp.json()["error"]
 
-    def test_weak_password_returns_400(self):
+    def test_weak_password_returns_422(self):
         resp = client.post("/auth/register", json={
             "email": "test@example.com",
             "password": "weak"
         })
-        assert resp.status_code == 400
+        assert resp.status_code == 422
+        assert "6 characters" in resp.json()["error"]
 
-    def test_invalid_email_returns_400(self):
+    def test_invalid_email_returns_422(self):
         resp = client.post("/auth/register", json={
             "email": "notanemail",
             "password": "Test1234!"
         })
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
-    def test_password_without_uppercase_returns_400(self):
-        resp = client.post("/auth/register", json={
-            "email": "test@example.com",
-            "password": "test1234!"
-        })
-        assert resp.status_code == 400
+    def test_password_without_uppercase_is_allowed_for_testing(self):
+        import uuid
+        user_id = uuid.uuid4()
+        mock_conn, mock_cursor = _mock_conn(fetchone=None)
+        mock_cursor.fetchone.side_effect = [None, (user_id,)]
+        with patch("src.auth_api.handler.get_connection", return_value=mock_conn):
+            resp = client.post("/auth/register", json={
+                "email": "test@example.com",
+                "password": "testing1"
+            })
+        assert resp.status_code == 201
 
-    def test_password_without_number_returns_400(self):
-        resp = client.post("/auth/register", json={
-            "email": "test@example.com",
-            "password": "TestPassword!"
-        })
-        assert resp.status_code == 400
+    def test_password_without_number_is_allowed_for_testing(self):
+        import uuid
+        user_id = uuid.uuid4()
+        mock_conn, mock_cursor = _mock_conn(fetchone=None)
+        mock_cursor.fetchone.side_effect = [None, (user_id,)]
+        with patch("src.auth_api.handler.get_connection", return_value=mock_conn):
+            resp = client.post("/auth/register", json={
+                "email": "test@example.com",
+                "password": "testing"
+            })
+        assert resp.status_code == 201
+
+    def test_missing_users_table_returns_503_with_hint(self):
+        from psycopg2 import errors
+
+        mock_conn, mock_cursor = _mock_conn()
+        mock_cursor.execute.side_effect = errors.UndefinedTable(
+            'relation "users" does not exist'
+        )
+
+        with patch("src.auth_api.handler.get_connection", return_value=mock_conn):
+            resp = client.post("/auth/register", json={
+                "email": "test@example.com",
+                "password": "Test1234!"
+            })
+
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["error"] == "database_schema_missing"
+        assert "migrate" in body["message"].lower()
 
 
 class TestLogin:

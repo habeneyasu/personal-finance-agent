@@ -18,6 +18,11 @@ output "database_name" {
   value       = aws_rds_cluster.this.database_name
 }
 
+output "master_username" {
+  description = "Master username for the Aurora cluster (same as in Secrets Manager JSON)"
+  value       = aws_rds_cluster.this.master_username
+}
+
 output "secret_arn" {
   description = "ARN of the Secrets Manager secret containing DB credentials"
   value       = aws_secretsmanager_secret.db_credentials.arn

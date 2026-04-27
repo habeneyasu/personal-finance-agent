@@ -1,7 +1,7 @@
 # ── API ──────────────────────────────────────────────────────
 output "api_gateway_url" {
   description = "Base URL for the PFIP REST API — set as VITE_API_URL for frontend"
-  value       = "https://${module.api_gateway.rest_api_id}.execute-api.${var.aws_region}.amazonaws.com/v1"
+  value       = "https://${module.api_gateway.rest_api_id}.execute-api.${var.aws_region}.amazonaws.com/api/v1"
 }
 
 # ── Auth ─────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ output "lambda_function_names" {
     expense  = module.lambda_expense.function_name
     savings  = module.lambda_savings.function_name
     insights = module.lambda_insights.function_name
+    metrics  = module.lambda_metrics.function_name
     mcp      = module.lambda_mcp_server.function_name
     auth     = module.lambda_auth.function_name
   }

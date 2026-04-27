@@ -219,6 +219,32 @@ resource "aws_iam_role_policy" "insights_agent_bedrock" {
 }
 
 # ─────────────────────────────────────────────
+# Metrics Agent IAM Role
+# Permissions: CloudWatch Logs + DB access
+# ─────────────────────────────────────────────
+resource "aws_iam_role" "metrics_agent" {
+  name               = "pfip-${var.environment}-metrics-agent-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+
+  tags = {
+    Environment = var.environment
+    Agent       = "metrics"
+  }
+}
+
+resource "aws_iam_role_policy" "metrics_agent_logs" {
+  name   = "logs"
+  role   = aws_iam_role.metrics_agent.id
+  policy = data.aws_iam_policy_document.logs.json
+}
+
+resource "aws_iam_role_policy" "metrics_agent_db" {
+  name   = "db-access"
+  role   = aws_iam_role.metrics_agent.id
+  policy = data.aws_iam_policy_document.db_access.json
+}
+
+# ─────────────────────────────────────────────
 # MCP Server IAM Role
 # Permissions: CloudWatch Logs + DB access + Lambda invoke
 # (Lambda invoke needed to call the 4 agent Lambdas)
@@ -250,4 +276,35 @@ resource "aws_iam_role_policy" "mcp_server_lambda_invoke" {
   name   = "lambda-invoke"
   role   = aws_iam_role.mcp_server.id
   policy = data.aws_iam_policy_document.lambda_invoke.json
+}
+
+# Required when Lambdas use vpc_config (ENI creation in VPC)
+resource "aws_iam_role_policy_attachment" "income_agent_vpc" {
+  role       = aws_iam_role.income_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "expense_agent_vpc" {
+  role       = aws_iam_role.expense_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "savings_agent_vpc" {
+  role       = aws_iam_role.savings_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "insights_agent_vpc" {
+  role       = aws_iam_role.insights_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "metrics_agent_vpc" {
+  role       = aws_iam_role.metrics_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "mcp_server_vpc" {
+  role       = aws_iam_role.mcp_server.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }

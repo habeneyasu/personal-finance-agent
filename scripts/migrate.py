@@ -7,14 +7,28 @@ Usage:
     python scripts/migrate.py --env staging
     python scripts/migrate.py --env local
 
+The --env flag is only a log label. The database target is always whatever
+get_connection() resolves (DB_SECRET_ARN, etc.).
+
+Aurora is private (no public IP). From your laptop you will get connection
+timeouts: there is no network path from the internet to the cluster endpoint,
+and opening the security group to your home IP is not enough unless the DB is
+publicly reachable in a public subnet.
+
+Run migrations from inside the VPC: bastion host, SSM port-forward to an EC2
+in the VPC, VPN into the VPC, or a CI job with VPC attachment.
+
 Credentials are read from:
   - AWS Secrets Manager via DB_SECRET_ARN or DB_SECRET_NAME env var, OR
   - Direct env vars: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+
+DB_CONNECT_TIMEOUT: seconds before psycopg2 gives up (default 30). Set 0 for no limit.
 """
 
 import argparse
-import sys
 import os
+import sys
+import time
 
 # Allow running from repo root without installing the package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -130,12 +144,20 @@ DDL_STATEMENTS = [
 
 def run_migrations(env: str) -> bool:
     """Run all DDL statements. Returns True if all succeeded, False otherwise."""
-    print(f"[{env}] Connecting to database...")
+    timeout_hint = os.environ.get("DB_CONNECT_TIMEOUT", "30 (default if unset)")
+    print(f"[{env}] Connecting to database... (connect_timeout={timeout_hint}s)")
+    print(
+        f"[{env}] If this never finishes, you are probably not in the VPC — "
+        "Aurora is private; use a bastion, SSM port-forward, or ECS/CI in the VPC."
+    )
+    t0 = time.monotonic()
     try:
         conn = get_connection()
     except Exception as exc:
-        print(f"[{env}] ERROR: Could not connect to database: {exc}")
+        elapsed = time.monotonic() - t0
+        print(f"[{env}] ERROR: Could not connect to database after {elapsed:.1f}s: {exc}")
         return False
+    print(f"[{env}] Connected in {time.monotonic() - t0:.1f}s.")
 
     conn.autocommit = True  # DDL statements don't need explicit transaction management
     cursor = conn.cursor()
@@ -159,7 +181,7 @@ def main() -> None:
     parser.add_argument(
         "--env",
         default="staging",
-        help="Environment name for logging context (default: staging)",
+        help="Label shown in logs only (does not select AWS account or secret)",
     )
     args = parser.parse_args()
 
