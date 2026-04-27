@@ -327,22 +327,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 🙏 Acknowledgments
-
-- **AWS** for serverless infrastructure
-- **FastAPI** for the web framework
-- **Model Context Protocol** team for the AI integration standard
-- **React** community for the frontend ecosystem
-
----
-
-## 📞 Support
-
-- 📧 Email: support@pfip.dev
-- 📖 Documentation: [docs.pfip.dev](https://docs.pfip.dev)
-- 🐛 Issues: [GitHub Issues](https://github.com/your-org/pfip-mvp/issues)
-- 💬 Discord: [Join our community](https://discord.gg/pfip)
-
 ---
 
 <div align="center">
