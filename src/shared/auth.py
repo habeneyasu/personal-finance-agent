@@ -87,12 +87,13 @@ def verify_token(token: str) -> dict:
 
         # Local JWT tokens (HS256, no kid) — verify with local secret
         if not kid:
-            local_secret = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
-            try:
-                claims = jwt.decode(token, local_secret, algorithms=["HS256"])
-                return claims
-            except JWTError:
-                pass  # Fall through to Cognito verification
+            local_secret = os.getenv("JWT_SECRET")
+            if local_secret:
+                try:
+                    claims = jwt.decode(token, local_secret, algorithms=["HS256"])
+                    return claims
+                except JWTError:
+                    pass  # Fall through to Cognito verification
 
         # Fetch JWKS and find matching key
         jwks = get_cognito_public_keys(user_pool_id, region)

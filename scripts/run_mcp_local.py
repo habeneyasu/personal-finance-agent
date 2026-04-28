@@ -32,7 +32,6 @@ os.environ.setdefault("DB_HOST", "localhost")
 os.environ.setdefault("DB_PORT", "5433")
 os.environ.setdefault("DB_NAME", "pfip")
 os.environ.setdefault("DB_USER", "pfip_admin")
-os.environ.setdefault("DB_PASSWORD", "pfip_local_password")
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -54,11 +53,9 @@ from src.expense_agent.categorizer import categorize_expense
 from src.savings_agent.models import SavingsGoalCreate
 from src.savings_agent.calculator import calculate_progress, calculate_monthly_rate, predict_completion
 from src.insights_agent.context_builder import build_financial_context
-from src.insights_agent.models import InsightQuery
 
 from decimal import Decimal
 from datetime import datetime, timezone
-import uuid
 
 
 # ---------------------------------------------------------------------------

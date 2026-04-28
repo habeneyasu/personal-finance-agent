@@ -3,15 +3,15 @@ services:
     image: postgres:15.4
     container_name: pfip-postgres
     environment:
-      POSTGRES_DB: pfip
-      POSTGRES_USER: pfip_admin
-      POSTGRES_PASSWORD: pfip_local_password
+      POSTGRES_DB: ${DB_NAME:-pfip}
+      POSTGRES_USER: ${DB_USER:-pfip_admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-local-only}
     ports:
       - "5433:5432"
     volumes:
       - pfip_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pfip_admin -d pfip"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pfip_admin} -d ${DB_NAME:-pfip}"]
       interval: 5s
       timeout: 5s
       retries: 5

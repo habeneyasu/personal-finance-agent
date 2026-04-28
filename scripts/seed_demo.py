@@ -24,7 +24,6 @@ os.environ.setdefault("DB_HOST", "localhost")
 os.environ.setdefault("DB_PORT", "5433")
 os.environ.setdefault("DB_NAME", "pfip")
 os.environ.setdefault("DB_USER", "pfip_admin")
-os.environ.setdefault("DB_PASSWORD", "pfip_local_password")
 
 from src.shared.db import get_connection, get_cursor  # noqa: E402
 
