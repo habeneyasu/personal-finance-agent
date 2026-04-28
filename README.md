@@ -378,16 +378,11 @@ For security concerns, email `habeneyasu@gmail.com`.
 Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
 
 ---
-
-<<<<<<< HEAD
 ## 🙏 Acknowledgments
 
 - **Andela** - for the AI Engineering Bootcamp and sponsorship of this capstone.
 - **AWS** - for generous free-tier resources.
 - **MCP** - for standardizing AI-agent tooling.
-
-=======
->>>>>>> origin/main
 ---
 
 <div align="center">
