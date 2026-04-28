@@ -9,6 +9,7 @@ Endpoints:
 """
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -44,7 +45,15 @@ async def add_cors_headers(request: Request, call_next):
     
     return response
 
-JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    environment = os.getenv("ENVIRONMENT", "").lower()
+    if environment and environment != "local":
+        raise RuntimeError("JWT_SECRET must be set when ENVIRONMENT is not local")
+    # Avoid shipping a static default secret; generate an ephemeral local-only fallback.
+    JWT_SECRET = secrets.token_urlsafe(32)
+    os.environ["JWT_SECRET"] = JWT_SECRET
+    _logger.warning("JWT_SECRET not set in local mode; using ephemeral in-memory secret")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
 

@@ -15,6 +15,7 @@ Endpoints:
     POST      /v1/insights/query
 """
 import os
+import secrets
 import sys
 
 # Add project root to path
@@ -38,7 +39,8 @@ os.environ.setdefault("DB_HOST", "localhost")
 os.environ.setdefault("DB_PORT", "5433")
 os.environ.setdefault("DB_NAME", "pfip")
 os.environ.setdefault("DB_USER", "pfip_admin")
-os.environ.setdefault("DB_PASSWORD", "pfip_local_password")
+if not os.environ.get("JWT_SECRET"):
+    os.environ["JWT_SECRET"] = secrets.token_urlsafe(32)
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -53,7 +55,7 @@ from src.savings_agent.handler import create_goal, list_goals
 from src.insights_agent.handler import query_insights
 from src.metrics_agent.handler import get_metrics
 
-JWT_SECRET = os.getenv("JWT_SECRET", "pfip-local-dev-secret-key-change-in-production")
+JWT_SECRET = os.environ["JWT_SECRET"]
 
 api = FastAPI(title="PFIP Local API", version="0.1.0")
 

@@ -1,6 +1,6 @@
 # 🏦 Personal Financial Intelligence Platform (PFIP)
 
-> **AI-Native Personal Finance with Model Context Protocol Integration**
+> **Deterministic Multi-Agent System for Verifiable Financial Insights**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![AWS](https://img.shields.io/badge/AWS-Lambda-orange.svg)](https://aws.amazon.com/lambda/)
@@ -9,7 +9,34 @@
 [![MCP](https://img.shields.io/badge/MCP-1.0-purple.svg)](https://modelcontextprotocol.io)
 [![Coverage](https://img.shields.io/badge/Coverage-90%25-brightgreen.svg)](https://pytest.org)
 
-A cutting-edge personal finance platform that combines **AI-powered insights** with **serverless architecture** and **Model Context Protocol (MCP)** integration. Track income, categorize expenses automatically, manage savings goals, and query your financial data in natural language.
+**PFIP** is a production-oriented serverless multi-agent platform designed to reduce hallucination risk in financial AI. It combines a coordinator-worker architecture with a deterministic validation loop so natural-language insights stay grounded in verifiable financial data.
+
+---
+
+## 🎯 Why PFIP?
+
+- **No blind LLM output**: insights are validated against deterministic financial context before being returned.
+- **Guardrailed reliability**: failed validation triggers bounded retry and deterministic fallback behavior.
+- **MCP-native interface**: financial tools are exposed through Model Context Protocol for conversational workflows.
+- **Serverless economics**: event-driven AWS architecture helps minimize idle operational overhead.
+
+---
+
+## 🏗️ Engineering Design Decisions
+
+### 🛡️ Deterministic Validation Over Blind Generation
+PFIP uses a **4-layer validation engine** (grounding, coverage, relevance, consistency) with bounded retry and deterministic fallback.
+Numeric grounding is enforced against context data within ±1.5%.
+[Deep dive →](docs/validation-engine.md)
+
+### ⚡ Serverless-First for Cost and Scale
+- **AWS Lambda + FastAPI** keeps services event-driven and operationally lightweight.
+- **Aurora Serverless v2 (PostgreSQL)** preserves relational integrity while scaling with demand.
+- This design minimizes idle infrastructure cost and simplifies production maintenance.
+
+### 📈 Observability by Default
+- The orchestration layer tracks execution state via `OrchestrationState` (decision path, retries, latency, and LLM call count).
+- Structured logs and trace metadata support debugging, evaluation, and reliability tuning.
 
 ---
 
@@ -45,63 +72,65 @@ A cutting-edge personal finance platform that combines **AI-powered insights** w
 
 ```mermaid
 graph TB
-    subgraph "Frontend Layer"
-        A[React Dashboard]
-        B[MCP Inspector]
+    subgraph "Clients"
+        UI[React Dashboard]
+        MCP[MCP Client]
     end
-    
-    subgraph "API Gateway"
-        C[API Gateway]
+
+    subgraph "API Edge"
+        GW[API Gateway]
     end
-    
-    subgraph "Lambda Microservices"
-        D[Income Agent]
-        E[Expense Agent]
-        F[Savings Agent]
-        G[Insights Agent]
-        H[Metrics Agent]
-        I[Auth API]
-        J[MCP Server]
+
+    subgraph "Orchestration Layer"
+        IA[Insights Agent / Coordinator]
+        VAL[4-Layer Validation Engine]
+        FB[Deterministic Fallback]
     end
-    
-    subgraph "AI Services"
-        K[AWS Bedrock]
-        L[LLM Judge]
+
+    subgraph "Worker Agents"
+        IN[Income Agent]
+        EX[Expense Agent]
+        SA[Savings Agent]
+        ME[Metrics Agent]
+        AU[Auth API]
+        MS[MCP Server]
     end
-    
-    subgraph "Data Layer"
-        M[Aurora Serverless]
-        N[Secrets Manager]
+
+    subgraph "Data & AI"
+        DB[(Aurora Serverless PostgreSQL)]
+        BR[AWS Bedrock / Cerebras]
+        SM[AWS Secrets Manager]
     end
-    
-    A --> C
-    B --> C
-    C --> D
-    C --> E
-    C --> F
-    C --> G
-    C --> H
-    C --> I
-    C --> J
-    
-    E --> K
-    G --> K
-    E --> L
-    G --> L
-    
-    D --> M
-    E --> M
-    F --> M
-    G --> M
-    H --> M
-    I --> M
-    
-    D --> N
-    E --> N
-    F --> N
-    G --> N
-    H --> N
-    I --> N
+
+    UI --> GW
+    MCP --> GW
+    GW --> IN
+    GW --> EX
+    GW --> SA
+    GW --> IA
+    GW --> ME
+    GW --> AU
+    GW --> MS
+
+    IA --> BR
+    IA --> VAL
+    VAL --> BR
+    VAL --> FB
+    FB --> DB
+
+    IN --> DB
+    EX --> DB
+    SA --> DB
+    ME --> DB
+    IA --> DB
+    AU --> DB
+
+    IN --> SM
+    EX --> SM
+    SA --> SM
+    IA --> SM
+    ME --> SM
+    AU --> SM
 ```
 
 ### 📁 Project Structure
@@ -132,48 +161,56 @@ pfip-mvp/
 - Python 3.11+
 - Node.js 18+
 - Docker & Docker Compose
-- AWS CLI (for deployment)
+- AWS CLI (optional, for deployment)
 
-### 🏠 Local Development
+### 🏠 Local Development (Isolated Environment)
 
-**1. Clone & Setup**
+**1. Clone Repository**
 ```bash
-git clone https://github.com/your-org/pfip-mvp.git
-cd pfip-mvp
+git clone https://github.com/habeneyasu/personal-finance-agent.git
+cd personal-finance-agent
 ```
 
-**2. Start Database**
+**2. Create and Activate Virtual Environment**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+**3. Configure Local Environment**
+```bash
+cp .env.example .env.local
+# Edit .env.local with your local values (DB_PASSWORD, JWT_SECRET, optional API keys)
+```
+
+**4. Start Local Database**
 ```bash
 docker-compose up -d
 ```
 
-**3. Setup Environment**
-```bash
-export $(cat .env.local | grep -v '^#' | grep -v '^$' | xargs)
-```
-
-**4. Run Database Setup**
+**5. Run Database Setup**
 ```bash
 python3 scripts/migrate.py --env local
 python3 scripts/seed_demo.py --env local --reset
 ```
 
-**5. Start Backend API**
+**6. Start Backend API**
 ```bash
 uvicorn scripts.run_api_local:app --port 8000 --reload
 ```
 
-**6. Start Frontend**
+**7. Start Frontend**
 ```bash
 cd frontend && npm install && npm run dev
 ```
 
-**7. Access the Application**
+**8. Access the Application**
 - 🌐 Frontend: http://localhost:5173
 - 🔐 Login: `demo@pfip.dev` / `Demo1234!`
 - 📚 API Docs: http://localhost:8000/docs
 
-**8. Optional: MCP Inspector**
+**9. Optional: MCP Inspector**
 ```bash
 npx @modelcontextprotocol/inspector python3 scripts/run_mcp_local.py
 ```
@@ -189,10 +226,9 @@ ENVIRONMENT=local pytest tests/unit/ --cov=src --cov-fail-under=80 -q
 ```
 
 ### Test Categories
-- **126 Unit Tests** with 90% coverage
-- **Integration Tests** for API endpoints
-- **LLM Accuracy Tests** for categorization
-- **MCP Protocol Tests** for tool compliance
+- Unit tests for agents, auth, MCP, and shared modules
+- Coverage enforcement in CI (`--cov-fail-under=80`)
+- Deterministic validation-path tests for insights reliability
 
 ---
 
@@ -218,7 +254,8 @@ The platform includes a complete GitHub Actions pipeline for:
 ### Required Secrets
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
 - `AURORA_MASTER_PASSWORD`, `TF_SUBNET_IDS`, `TF_VPC_ID`
-- `JWT_SECRET`, `BEDROCK_API_KEY`
+- `JWT_SECRET`, `PFIP_API_KEY`
+- Optional: `CEREBRAS_API_KEY` (for local/demo LLM path)
 
 ---
 
@@ -236,9 +273,18 @@ The platform includes a complete GitHub Actions pipeline for:
 | `/auth/*` | POST | Authentication (local dev only) |
 
 ### MCP Integration
-The platform exposes **7 tools** and **3 resources** through the Model Context Protocol:
-- **Tools**: Add income, categorize expenses, create goals, query insights, get metrics, calculate savings, export data
-- **Resources**: Financial summary, transaction history, goal progress
+The platform exposes **7 tools** and **3 resources** through Model Context Protocol.
+
+**Tools**
+- `create_income_entry`, `list_income_entries`
+- `create_expense_entry`, `list_expense_entries`
+- `create_savings_goal`, `list_savings_goals`
+- `query_insights`
+
+**Resources**
+- `income://entries`
+- `expenses://entries`
+- `goals://active`
 
 ---
 
@@ -273,15 +319,14 @@ The platform exposes **7 tools** and **3 resources** through the Model Context P
 - **Error Handling** with custom exceptions
 
 ### Performance
-- **Serverless Architecture** for auto-scaling
-- **Database Connection Pooling**
-- **Caching Strategy** for frequently accessed data
-- **Async Operations** where applicable
+- **Serverless architecture** for on-demand scaling
+- **Deterministic validation and fallback** for reliable insights
+- **Bounded retries** to control latency and cost
 
 ### Security
 - **Input Validation** and sanitization
 - **SQL Injection Prevention** with parameterized queries
-- **Authentication & Authorization** checks
+- **Authentication & authorization** checks
 - **Secrets Management** best practices
 
 ---
@@ -321,18 +366,34 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ---
 
-## 📄 License
+## 📬 Support
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+For issues or questions, open a GitHub Issue.
+For security concerns, email `habeneyasu@gmail.com`.
 
 ---
 
+## 📄 License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
+
+---
+
+<<<<<<< HEAD
+## 🙏 Acknowledgments
+
+- **Andela** - for the AI Engineering Bootcamp and sponsorship of this capstone.
+- **AWS** - for generous free-tier resources.
+- **MCP** - for standardizing AI-agent tooling.
+
+=======
+>>>>>>> origin/main
 ---
 
 <div align="center">
 
-**🌟 Star this repo if it inspired you!**
+If this project helps you, please ★ star the repository.
 
-Made with ❤️ by the PFIP Team
+Maintained by Haben Eyasu as part of the Andela AI Engineering Bootcamp.
 
 </div>

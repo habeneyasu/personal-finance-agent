@@ -111,12 +111,12 @@ npx @modelcontextprotocol/inspector python3 scripts/run_mcp_local.py
 
 ## 6) Database Notes
 
-Local DB defaults are set by `scripts/run_api_local.py`:
+Local DB defaults are set by `scripts/run_api_local.py` (except `DB_PASSWORD`, which must come from environment):
 - `DB_HOST=localhost`
 - `DB_PORT=5433`
 - `DB_NAME=pfip`
 - `DB_USER=pfip_admin`
-- `DB_PASSWORD=pfip_local_password`
+- `DB_PASSWORD` (set in your local env file, e.g. `.env.local`)
 
 Primary tables:
 - `users`
